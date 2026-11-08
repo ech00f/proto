@@ -45,7 +45,7 @@ std::size_t receive(char *data, std::size_t size, std::size_t count, void *userd
     try {
         buffer.body.append(data, bytes);
     } catch (...) {
-        return 0; // Never unwind a C callback.
+        return 0;
     }
     return bytes;
 }
@@ -86,8 +86,6 @@ bool Cancellation::cancelled() const {
 RequestCancelled::RequestCancelled() : std::runtime_error("Completion request cancelled") {}
 
 std::optional<std::string> normalize_completion(std::string_view prefix, std::string_view content) {
-    // Some providers append a final newline despite the instruction. Interior newlines stay
-    // invalid.
     while (!content.empty() && (content.back() == '\r' || content.back() == '\n')) {
         content.remove_suffix(1);
     }
@@ -161,7 +159,6 @@ std::optional<std::string> ApiClient::complete(const nlohmann::json &context,
     check(curl_easy_setopt(handle.get(), CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS));
 #endif
     if (config_.local_endpoint()) {
-        // Local models must stay local even when HTTP_PROXY is inherited from the shell.
         check(curl_easy_setopt(handle.get(), CURLOPT_PROXY, ""));
     }
     check(curl_easy_setopt(handle.get(), CURLOPT_WRITEFUNCTION, receive));
@@ -186,7 +183,6 @@ std::optional<std::string> ApiClient::complete(const nlohmann::json &context,
     long status = 0;
     check(curl_easy_getinfo(handle.get(), CURLINFO_RESPONSE_CODE, &status));
     if (status < 200 || status >= 300) {
-        // Do not echo response bodies: they can contain credentials or private context.
         throw std::runtime_error("AI endpoint returned HTTP " + std::to_string(status));
     }
     try {

@@ -14,7 +14,6 @@ struct ShellResult {
     int status = 0;
 };
 
-// A foreground command runner with small cd/exit/jobs/fg builtins, not a shell-language parser.
 class Shell {
   public:
     explicit Shell(Config config);

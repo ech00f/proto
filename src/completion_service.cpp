@@ -16,7 +16,7 @@ CompletionService::~CompletionService() {
     stopping_.store(true, std::memory_order_relaxed);
     cancel();
     condition_.notify_all();
-    worker_.join(); // Keep all request state alive until the HTTP cancellation has completed.
+    worker_.join();
 }
 
 std::uint64_t CompletionService::submit(std::string prefix, std::filesystem::path cwd,
@@ -98,7 +98,6 @@ void CompletionService::run() {
                 publish({request.generation, request.prefix, generated, {}, true});
             }
         } catch (const RequestCancelled &) {
-            // A newer edit supersedes this request; never display its response or errors.
         } catch (const std::exception &error) {
             publish({request.generation, request.prefix, std::nullopt, error.what()});
         }

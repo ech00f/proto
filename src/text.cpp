@@ -105,7 +105,6 @@ bool looks_sensitive(std::string_view text) {
     if (contains_any(lowered, markers)) {
         return true;
     }
-    // User-info in URLs can contain a password even without a recognizable secret label.
     std::size_t scheme = 0;
     while ((scheme = lowered.find("://", scheme)) != std::string::npos) {
         const auto start = scheme + 3;

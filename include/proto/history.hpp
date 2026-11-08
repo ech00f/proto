@@ -9,7 +9,6 @@
 
 namespace proto {
 
-// Only proto's own history is read; bash/zsh history is never imported.
 class History {
   public:
     explicit History(const Config &config);

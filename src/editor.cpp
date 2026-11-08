@@ -314,7 +314,7 @@ bool LineBuffer::accept(std::string_view command, bool word_only) {
 
 Frame make_frame(std::string_view prompt, const LineBuffer &line, std::string_view completion,
                  int columns) {
-    const int usable = std::max(0, columns - 1); // Never trigger terminal line wrapping.
+    const int usable = std::max(0, columns - 1);
     Frame frame;
     frame.prompt = clip_columns(prompt, std::max(0, usable - 4));
     const int prompt_width = display_width(frame.prompt);
@@ -376,7 +376,6 @@ ReadResult Editor::read_line(const std::filesystem::path &cwd,
         }
         if (completion && completion->starts_with(line.text()) &&
             completion->size() > line.text().size()) {
-            // Reuse a matching prediction instead of making one API request per accepted character.
             completions_.cancel();
             return;
         }
@@ -458,7 +457,7 @@ ReadResult Editor::read_line(const std::filesystem::path &cwd,
                 suppressed = false;
                 break;
             case Key::Enter:
-                return finish(ReadState::Submitted); // Deliberately never accept ghost text here.
+                return finish(ReadState::Submitted);
             case Key::Cancel:
                 return finish(ReadState::Cancelled, SIGINT);
             case Key::Eof:

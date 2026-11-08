@@ -70,7 +70,6 @@ std::optional<std::vector<std::string>> builtin_words(const std::string &command
         if (result == WRDE_NOSPACE) {
             ::wordfree(&expanded);
         }
-        // Operators, redirections, and command substitutions are delegated to the user's shell.
         return std::nullopt;
     }
     std::vector<std::string> words;
@@ -255,7 +254,6 @@ int Shell::wait(Job job, bool resume) {
         }
         if (result > 0 && parent_group >= 0 && initial_terminal_stop && WIFSTOPPED(status) &&
             (WSTOPSIG(status) == SIGTTIN || WSTOPSIG(status) == SIGTTOU)) {
-            // posix_spawn may run a fast reader before the parent hands over the terminal.
             initial_terminal_stop = false;
             (void)::tcsetpgrp(STDIN_FILENO, job.pid);
             ::kill(-job.pid, SIGCONT);
@@ -271,7 +269,6 @@ int Shell::wait(Job job, bool resume) {
         break;
     }
     if (termination != 0) {
-        // Re-deliver after ignored dispositions are restored, so the next editor exits cleanly.
         ::kill(::getpid(), termination);
     }
     if (WIFSTOPPED(status)) {

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Real HTTP and PTY tests. All context and commands stay inside disposable fixtures."""
 
 import errno
 import fcntl
@@ -25,7 +24,6 @@ BINARY = str(Path(sys.argv.pop(1)).resolve())
 
 class TerminalProcess:
     def __init__(self, environment, cwd, arguments=()):
-        # Pause the child until the parent has captured the original terminal attributes.
         gate_read, gate_write = os.pipe()
         self.pid, self.master = pty.fork()
         if self.pid == 0:
@@ -73,7 +71,6 @@ class TerminalProcess:
         return self.output
 
     def prompt(self, text=b" $ "):
-        # A submitted line also contains "$ ": wait for editing mode to resume after the child exits.
         self.read_until(b"\x1b[?2004h")
         return self.read_until(text)
 
@@ -193,7 +190,6 @@ class IntegrationTests(unittest.TestCase):
                               text=True, capture_output=True, timeout=5)
 
     def terminal(self, *arguments):
-        # forkpty must not inherit a live Python HTTP thread.
         self.server.shutdown()
         self.thread.join()
         try:

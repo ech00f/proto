@@ -104,7 +104,7 @@ void History::load() {
     while (start < data.size()) {
         const auto end = data.find('\n', start);
         if (end == data.npos) {
-            break; // Ignore an incomplete final record.
+            break;
         }
         const auto line = std::string_view(data).substr(start, end - start);
         if (can_send_prefix(line)) {

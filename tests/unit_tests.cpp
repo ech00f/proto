@@ -54,7 +54,7 @@ class Fixture {
     }
     ~Fixture() {
         std::error_code error;
-        std::filesystem::remove_all(root, error); // Only this uniquely created test fixture.
+        std::filesystem::remove_all(root, error);
     }
     Fixture(const Fixture &) = delete;
     Fixture &operator=(const Fixture &) = delete;
