@@ -136,6 +136,8 @@ Your prompt, aliases, functions, `cd`, pipelines, and job control remain native
 to your shell. Tab and cursor movement retain their original behavior when
 there is no suggestion to accept. Up/Down still browse your shell's history;
 the menu shows proto's separate, filtered history.
+Plain Up/Down keep your existing bindings. In Zsh, suggestions pause while
+browsing history and resume when you edit the line or request one explicitly.
 
 For a user-local installation, set `PROTO_BIN="$HOME/.local/bin/proto"` and
 source `"$HOME/.local/share/proto/proto.bash"` or `proto.zsh` instead.
@@ -280,7 +282,9 @@ python3 scripts/install.py --remove-shell zsh --disable-service
 
 Open the control center with **F2 / Ctrl+Space**, or run `./build/proto --menu`.
 Its pages are Dashboard, Settings, History, Context, and Keys. Use `1`–`5` or
-Tab to change pages, Up/Down to select, and Enter to edit or recall a command.
+Tab to change pages. Up/Down select items and move to the adjacent page at list
+boundaries; Down on Dashboard opens Settings. Left/Right change pages except
+in Settings, where they adjust values. Enter edits or recalls a command.
 On History, `/` searches; recall only fills the input and never executes it.
 On Dashboard, `p` starts a plan. Esc closes the menu without losing your draft.
 The menu needs a terminal of at least 58 columns × 14 rows.
