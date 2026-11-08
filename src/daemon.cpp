@@ -231,7 +231,9 @@ Descriptor connect_daemon(const std::filesystem::path &path, Clock::time_point d
     if (path.empty()) {
         return Descriptor{};
     }
-    const auto location = address(path);
+    if (!path.is_absolute() || !printable_utf8(path.string())) {
+        throw std::runtime_error("PROTO_DAEMON_SOCKET must be a printable absolute path");
+    }
     struct stat info{};
     if (::lstat(path.c_str(), &info) != 0) {
         if (errno == ENOENT || errno == ENOTDIR) {
@@ -239,6 +241,7 @@ Descriptor connect_daemon(const std::filesystem::path &path, Clock::time_point d
         }
         throw std::runtime_error("Could not inspect proto daemon socket");
     }
+    const auto location = address(path);
     private_directory(path.parent_path());
     if (!owned_socket(info)) {
         throw std::runtime_error("Proto daemon socket must be owned, private, and not a symlink");

@@ -137,6 +137,17 @@ class IntegrationTests(unittest.TestCase):
         self.assertNotIn("recent_commands", request["context"])
         self.assertNotIn("FILE_CONTENT_MUST_NOT_LEAVE", json.dumps(request))
 
+    def test_long_absent_runtime_directory_keeps_direct_ai_available(self):
+        self.environment["XDG_RUNTIME_DIR"] = str(self.root / ("runtime-" + "x" * 130))
+        self.response = lambda _context: "git status --short"
+        result = self.run_cli("--complete", "git st")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "git status --short\n")
+        self.assertEqual(len(self.requests), 1)
+        status = self.run_cli("--daemon-status")
+        self.assertEqual(status.returncode, 3, status.stderr)
+        self.assertFalse(json.loads(status.stdout)["running"])
+
     def test_alternative_suggestions_and_risk_labels(self):
         self.response = lambda _context: json.dumps({"completions": ["git status", "git stash", "git status", "rm -rf /"]})
         result = self.run_cli("--suggest-json", "git st")

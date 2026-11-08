@@ -356,6 +356,15 @@ class DaemonTests(unittest.TestCase):
         self.assertEqual(self.run_cli("--complete", "printf direct").stdout, "printf direct-suggested\n")
         self.assertEqual(len(self.requests), 1)
 
+    def test_invalid_socket_paths_are_rejected_before_direct_requests(self):
+        for path in ("relative.sock", str(self.runtime / "bad\x1bpath")):
+            with self.subTest(path=path):
+                self.environment["PROTO_DAEMON_SOCKET"] = path
+                result = self.run_cli("--complete", "printf invalid")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("printable absolute path", result.stderr)
+        self.assertEqual(self.requests, [])
+
     def test_stale_ghost_reply_cannot_execute_after_daemon_transport(self):
         self.start_daemon()
 
