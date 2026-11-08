@@ -59,6 +59,13 @@ std::string url_part(CURLU *url, CURLUPart part) {
     return raw;
 }
 
+bool has_url_part(CURLU *url, CURLUPart part) {
+    char *raw = nullptr;
+    const bool present = curl_url_get(url, part, &raw, 0) == CURLUE_OK;
+    curl_free(raw);
+    return present;
+}
+
 bool loopback(std::string_view host) {
     return host == "localhost" || host == "127.0.0.1" || host == "[::1]";
 }
@@ -70,10 +77,8 @@ std::unique_ptr<CURLU, decltype(&curl_url_cleanup)> parse_url(const std::string 
         curl_url_set(url.get(), CURLUPART_URL, value.c_str(), 0) != CURLUE_OK) {
         throw std::runtime_error("PROTO_API_BASE must be a valid HTTP(S) URL");
     }
-    if (!url_part(url.get(), CURLUPART_USER).empty() ||
-        !url_part(url.get(), CURLUPART_PASSWORD).empty() ||
-        !url_part(url.get(), CURLUPART_QUERY).empty() ||
-        !url_part(url.get(), CURLUPART_FRAGMENT).empty()) {
+    if (has_url_part(url.get(), CURLUPART_USER) || has_url_part(url.get(), CURLUPART_PASSWORD) ||
+        value.find_first_of("?#") != std::string::npos) {
         throw std::runtime_error(
             "PROTO_API_BASE cannot contain credentials, a query, or a fragment");
     }
@@ -133,7 +138,9 @@ void Config::validate() const {
     if (!printable_utf8(api_key)) {
         throw std::runtime_error("PROTO_API_KEY contains invalid characters");
     }
-    if (!std::filesystem::path(shell).is_absolute() || ::access(shell.c_str(), X_OK) != 0) {
+    std::error_code error;
+    if (!printable_utf8(shell) || !std::filesystem::path(shell).is_absolute() ||
+        !std::filesystem::is_regular_file(shell, error) || ::access(shell.c_str(), X_OK) != 0) {
         throw std::runtime_error("PROTO_SHELL / SHELL must name an executable absolute path");
     }
     if (!home.is_absolute()) {

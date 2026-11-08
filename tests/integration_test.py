@@ -72,6 +72,11 @@ class TerminalProcess:
             raise AssertionError(f"Terminal did not print {text!r}: {self.output!r}")
         return self.output
 
+    def prompt(self, text=b" $ "):
+        # A submitted line also contains "$ ": wait for editing mode to resume after the child exits.
+        self.read_until(b"\x1b[?2004h")
+        return self.read_until(text)
+
     def wait(self, timeout=4):
         deadline = time.monotonic() + timeout
         while self.status is None and time.monotonic() < deadline:
@@ -242,6 +247,12 @@ class IntegrationTests(unittest.TestCase):
         self.assertIn("invalid chat-completion", result.stderr)
         self.assertNotIn("test-only-key", result.stderr)
 
+    def test_oversized_response_is_rejected(self):
+        self.raw_response = b"x" * (1024 * 1024 + 1)
+        result = self.run_cli("--complete", "git st")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("exceeded 1 MiB", result.stderr)
+
     def test_redirect_not_followed(self):
         self.http_status = 307
         result = self.run_cli("--complete", "git st")
@@ -250,8 +261,11 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(len(self.requests), 1)
 
     def test_secret_prefix_not_sent(self):
-        result = self.run_cli("--complete", "export API_KEY=do-not-send")
-        self.assertEqual(result.returncode, 0, result.stderr)
+        for prefix in ("export API_KEY=do-not-send", "curl -u user:abc123 ",
+                       "curl https://user:abc123@example.com/", "sshpass -p abc123 ssh "):
+            with self.subTest(prefix=prefix):
+                result = self.run_cli("--complete", prefix)
+                self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.requests, [])
 
     def test_timeout_is_bounded(self):
@@ -300,7 +314,7 @@ class IntegrationTests(unittest.TestCase):
         terminal.read_until(b"printf ai-accepted > accepted.txt")
         self.assertFalse((self.cwd / "accepted.txt").exists())
         terminal.send("\r")
-        terminal.read_until(b" $ ")
+        terminal.prompt()
         self.assertEqual((self.cwd / "accepted.txt").read_text(), "ai-accepted")
         terminal.send("\x04")
         self.assertEqual(terminal.wait(), 0)
@@ -312,7 +326,7 @@ class IntegrationTests(unittest.TestCase):
         terminal.send("printf plain")
         terminal.read_until(b"> should-not-exist.txt")
         terminal.send("\r")
-        terminal.read_until(b" $ ")
+        terminal.prompt()
         self.assertFalse((self.cwd / "should-not-exist.txt").exists())
         self.assertIn(b"plain", terminal.output)
 
@@ -341,13 +355,13 @@ class IntegrationTests(unittest.TestCase):
         terminal.read_until(b"-current")
         self.assertNotIn(b"old-stale", terminal.output)
         terminal.send("\t\r")
-        terminal.read_until(b" $ ")
+        terminal.prompt()
         self.assertFalse((self.cwd / "stale.txt").exists())
 
     def test_unicode_backspace_and_terminal_restore(self):
         terminal = self.terminal("--no-ai")
         terminal.send("printf Приветx\x7f\r")
-        terminal.read_until(b" $ ")
+        terminal.prompt()
         self.assertIn("Привет".encode(), terminal.output)
         self.assertNotIn("Приветx".encode(), terminal.output)
         terminal.send("\x04")
@@ -360,18 +374,18 @@ class IntegrationTests(unittest.TestCase):
         terminal.read_until(b"printf pasted > pasted.txt")
         self.assertFalse((self.cwd / "pasted.txt").exists())
         terminal.send("\r")
-        terminal.read_until(b" $ ")
+        terminal.prompt()
         self.assertEqual((self.cwd / "pasted.txt").read_text(), "pasted")
 
     def test_cd_persists_in_parent(self):
         terminal = self.terminal("--no-ai")
         terminal.send("cd ..\r")
-        terminal.read_until(b"proto ~ $ ")
+        terminal.prompt(b"proto ~ $ ")
         terminal.send("printf '%s' \"$PWD\" > cwd.txt\r")
-        terminal.read_until(b" $ ")
+        terminal.prompt()
         self.assertEqual((self.home / "cwd.txt").read_text(), str(self.home))
         terminal.send("cd -\r")
-        terminal.read_until(b"proto ~/project $ ")
+        terminal.prompt(b"proto ~/project $ ")
 
     def test_foreground_ctrl_c_and_job_resume(self):
         terminal = self.terminal("--no-ai")
@@ -379,11 +393,11 @@ class IntegrationTests(unittest.TestCase):
         terminal.read_until(b"\x1b[?2004l")
         terminal.send("\x1a")
         terminal.read_until(b"use fg to resume")
-        terminal.read_until(b" $ ")
+        terminal.prompt()
         terminal.send("fg\r")
         terminal.read_until(b"\x1b[?2004l")
         terminal.send("\x03")
-        terminal.read_until(b" $ ")
+        terminal.prompt()
         terminal.send("\x04")
         self.assertEqual(terminal.wait(), 130)
         self.assertTrue(terminal.restored())
@@ -397,8 +411,87 @@ class IntegrationTests(unittest.TestCase):
     def test_api_key_not_inherited_by_commands(self):
         terminal = self.terminal("--no-ai")
         terminal.send("printf '%s' \"${PROTO_API_KEY-unset}\" > child-key.txt\r")
-        terminal.read_until(b" $ ")
+        terminal.prompt()
         self.assertEqual((self.cwd / "child-key.txt").read_text(), "unset")
+
+    def test_metadata_scope_and_entry_limit(self):
+        for index in range(8):
+            (self.cwd / f"file-{index}.txt").write_text("private content")
+        self.environment.update({"PROTO_CONTEXT": "cwd", "PROTO_MAX_ENTRIES": "3"})
+        context = json.loads(self.run_cli("--context").stdout)
+        self.assertEqual(len(context["cwd_entries"]), 3)
+        self.assertNotIn("home_directories", context)
+        self.environment["PROTO_CONTEXT"] = "none"
+        context = json.loads(self.run_cli("--context").stdout)
+        self.assertEqual(set(context), {"prefix", "shell"})
+
+    def test_history_sharing_requires_explicit_opt_in(self):
+        history = self.root / "state" / "proto" / "history"
+        history.parent.mkdir(parents=True)
+        history.write_text("git status\nexport API_KEY=never-send\n")
+        history.chmod(0o600)
+        self.assertNotIn("recent_commands", json.loads(self.run_cli("--context").stdout))
+        self.environment["PROTO_SEND_HISTORY"] = "1"
+        context = json.loads(self.run_cli("--context").stdout)
+        self.assertEqual(context["recent_commands"], ["git status"])
+
+    def test_invalid_environment_is_rejected(self):
+        for name, value in (("PROTO_MAX_ENTRIES", "0"), ("PROTO_TIMEOUT_MS", "abc"),
+                            ("PROTO_CONTEXT", "all"), ("PROTO_SEND_HISTORY", "yes")):
+            with self.subTest(name=name):
+                self.environment[name] = value
+                result = self.run_cli("--context")
+                self.assertEqual(result.returncode, 1)
+                self.assertIn(name, result.stderr)
+                del self.environment[name]
+
+    def test_idle_ctrl_c_and_escape_dismissal(self):
+        self.response = lambda _context: "printf discard > discard.txt"
+        terminal = self.terminal()
+        terminal.send("printf dis")
+        terminal.read_until(b"card > discard.txt")
+        terminal.send("\x1b")
+        terminal.pump(0.2)
+        terminal.send("\t\r")
+        terminal.prompt()
+        self.assertFalse((self.cwd / "discard.txt").exists())
+        terminal.send("this-command-will-be-cancelled\x03")
+        terminal.read_until(b"^C")
+        terminal.prompt()
+        terminal.send("\x04")
+        self.assertEqual(terminal.wait(), 0)
+
+    def test_up_down_restore_unsubmitted_draft(self):
+        terminal = self.terminal("--no-ai")
+        terminal.send("printf history > history.txt\r")
+        terminal.prompt()
+        terminal.send("printf draft > draft.txt\x1b[A\x1b[B\r")
+        terminal.prompt()
+        self.assertEqual((self.cwd / "draft.txt").read_text(), "draft")
+
+    def test_right_arrow_accepts_and_enter_keeps_exit_status(self):
+        self.response = lambda _context: "printf right > right.txt"
+        terminal = self.terminal()
+        terminal.send("printf ri")
+        terminal.read_until(b"ght > right.txt")
+        terminal.send("\x1b[C\r")
+        terminal.prompt()
+        self.assertEqual((self.cwd / "right.txt").read_text(), "right")
+        terminal.send("exit 7\r")
+        self.assertEqual(terminal.wait(), 7)
+        self.assertTrue(terminal.restored())
+
+    def test_ai_offline_indicator_recovers(self):
+        terminal = self.terminal()
+        self.http_status = 503
+        terminal.send("printf unavailable")
+        terminal.read_until(b"proto [local]")
+        self.http_status = 200
+        self.response = lambda context: context["prefix"]
+        terminal.send("\x15printf recovered")
+        self.wait_requests(2)
+        terminal.pump(0.2)
+        self.assertIn(b"\x1b[36mproto ~/project", terminal.output)
 
     def test_non_tty_requires_explicit_completion_mode(self):
         result = self.run_cli()

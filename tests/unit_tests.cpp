@@ -8,11 +8,13 @@
 
 #include <clocale>
 #include <cstdlib>
+#include <fcntl.h>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iostream>
 #include <stdexcept>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -75,6 +77,9 @@ void text_tests() {
     check(proto::looks_sensitive("curl -H 'Authorization: Bearer abc'"), "Header not detected");
     check(proto::looks_sensitive("export PROTO_API_KEY=abc"), "Key assignment not detected");
     check(proto::looks_sensitive("echo ghp_example"), "Token not detected");
+    check(proto::looks_sensitive("curl https://name:abc123@example.com/path"), "URL credentials");
+    check(proto::looks_sensitive("curl -u name:abc123 "), "HTTP basic credentials");
+    check(proto::looks_sensitive("sshpass -p abc123 ssh host"), "sshpass credentials");
     check(!proto::can_send_prefix("echo password=123"), "Secret prefix permitted");
     check(proto::private_name(".env"), "Dotfile exposed");
     check(proto::private_name("wallet-recovery.txt"), "Recovery file exposed");
@@ -89,15 +94,20 @@ void config_tests() {
         fixture.config.api_base = url;
         fixture.config.validate();
     }
-    for (const auto *url : {"http://example.com/v1", "ftp://localhost/v1",
-                            "https://user:pass@example.com/v1", "https://example.com/v1?key=x",
-                            "https://example.com/v1#fragment", "http://localhost.example.com/v1"}) {
+    for (const auto *url :
+         {"http://example.com/v1", "ftp://localhost/v1", "https://user:pass@example.com/v1",
+          "https://example.com/v1?key=x", "https://example.com/v1#fragment",
+          "http://localhost.example.com/v1", "https://example.com/v1?", "https://example.com/v1#",
+          "https://@example.com/v1"}) {
         fixture.config.api_base = url;
         throws([&] { fixture.config.validate(); }, "Unsafe API URL accepted");
     }
     fixture.config.api_base = "https://api.openai.com/v1";
     fixture.config.api_key = "key\r\nInjected: header";
     throws([&] { fixture.config.validate(); }, "Header injection accepted");
+    fixture.config.api_key.clear();
+    fixture.config.shell = "/bin";
+    throws([&] { fixture.config.validate(); }, "Directory accepted as a shell executable");
 }
 
 void context_tests() {
@@ -123,6 +133,9 @@ void context_tests() {
               .at("cwd_entries")
               .empty(),
           "Private directory exposed");
+    check(proto::build_context(fixture.config, "ls ", fixture.config.home / ".ssh").at("cwd") ==
+              "[private directory]",
+          "Private directory path exposed");
     fixture.config.context_scope = proto::ContextScope::None;
     const auto minimal = proto::build_context(fixture.config, "git st", cwd);
     check(!minimal.contains("cwd") && !minimal.contains("home_directories"),
@@ -257,14 +270,54 @@ void editor_tests() {
     check(decoder.flush_escape()[0].key == proto::Key::Escape, "Standalone escape");
 }
 
+void history_safety_tests() {
+    Fixture fixture;
+    const auto directory = fixture.config.state_directory / "proto";
+    const auto path = directory / "history";
+    std::filesystem::create_directories(directory);
+    const auto victim = fixture.root / "victim";
+    std::ofstream(victim) << "do-not-read-or-write\n";
+    ::chmod(victim.c_str(), 0600);
+    std::filesystem::create_hard_link(victim, path);
+    proto::History hard_link(fixture.config);
+    check(hard_link.entries().empty(), "Hard-linked history was read");
+    hard_link.add("pwd");
+    check(std::filesystem::file_size(victim) == 21, "Hard-linked history target modified");
+    std::filesystem::remove(path);
+    std::filesystem::remove(directory);
+    const auto outside = fixture.root / "outside";
+    std::filesystem::create_directory(outside);
+    std::ofstream(outside / "history") << "do-not-read\n";
+    ::chmod((outside / "history").c_str(), 0600);
+    std::filesystem::create_directory_symlink(outside, directory);
+    proto::History symlink_directory(fixture.config);
+    check(symlink_directory.entries().empty(), "Symlinked history directory was read");
+    symlink_directory.add("pwd");
+    check(std::filesystem::file_size(outside / "history") == 12,
+          "Symlinked directory target modified");
+    std::filesystem::remove(directory);
+    std::filesystem::create_directory(directory);
+    const int descriptor = ::open(path.c_str(), O_CREAT | O_WRONLY, 0600);
+    check(descriptor >= 0, "Could not create locked history fixture");
+    check(::flock(descriptor, LOCK_EX) == 0, "Could not lock test history");
+    proto::History locked(fixture.config);
+    locked.add("pwd");
+    check(!locked.warning().empty(), "Busy history should fall back to memory, not block");
+    ::close(descriptor);
+}
+
 } // namespace
 
 int main() {
     (void)std::setlocale(LC_ALL, "");
     const std::pair<const char *, std::function<void()>> tests[]{
-        {"text / privacy", text_tests}, {"configuration", config_tests},
-        {"context", context_tests},     {"completion", completion_tests},
-        {"history", history_tests},     {"terminal editor", editor_tests}};
+        {"text / privacy", text_tests},
+        {"configuration", config_tests},
+        {"context", context_tests},
+        {"completion", completion_tests},
+        {"history", history_tests},
+        {"terminal editor", editor_tests},
+        {"history safety", history_safety_tests}};
     int failures = 0;
     for (const auto &[name, action] : tests) {
         try {

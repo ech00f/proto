@@ -70,7 +70,8 @@ nlohmann::json build_context(const Config &config, std::string_view prefix,
     nlohmann::json context{{"prefix", prefix},
                            {"shell", std::filesystem::path(config.shell).filename().string()}};
     if (config.context_scope != ContextScope::None) {
-        context["cwd"] = display_path(cwd, config.home);
+        context["cwd"] =
+            private_directory(cwd) ? "[private directory]" : display_path(cwd, config.home);
         context["cwd_entries"] = directory_names(cwd, false, config.max_entries);
     }
     if (config.context_scope == ContextScope::Home) {

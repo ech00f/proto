@@ -44,7 +44,7 @@ class CompletionService {
         std::chrono::steady_clock::time_point ready;
     };
 
-    void run(std::stop_token stop);
+    void run();
     void publish(CompletionResult result);
 
     Config config_;
@@ -53,7 +53,8 @@ class CompletionService {
     std::optional<Request> pending_;
     std::deque<CompletionResult> results_;
     std::atomic<std::uint64_t> generation_{0};
-    std::jthread worker_;
+    std::atomic<bool> stopping_{false};
+    std::thread worker_;
 };
 
 } // namespace proto

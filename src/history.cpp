@@ -35,8 +35,14 @@ class File {
 
 bool owned_regular_file(int descriptor, struct stat &status) {
     return ::fstat(descriptor, &status) == 0 && S_ISREG(status.st_mode) &&
-           status.st_uid == ::getuid() && status.st_size >= 0 &&
+           status.st_uid == ::getuid() && status.st_nlink == 1 && status.st_size >= 0 &&
            static_cast<std::uintmax_t>(status.st_size) <= max_history_bytes;
+}
+
+bool owned_directory(int descriptor) {
+    struct stat status{};
+    return ::fstat(descriptor, &status) == 0 && S_ISDIR(status.st_mode) &&
+           status.st_uid == ::getuid();
 }
 
 } // namespace
@@ -49,7 +55,20 @@ History::History(const Config &config)
 }
 
 void History::load() {
-    const File file(::open(path_.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
+    const File directory(
+        ::open(path_.parent_path().c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
+    if (directory.get() < 0) {
+        if (errno != ENOENT) {
+            warning_ = "Could not safely open proto history directory";
+        }
+        return;
+    }
+    if (!owned_directory(directory.get())) {
+        warning_ = "Ignoring unowned proto history directory";
+        return;
+    }
+    const File file(
+        ::openat(directory.get(), "history", O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
     if (file.get() < 0) {
         if (errno != ENOENT) {
             warning_ = "Could not safely open proto history";
@@ -61,7 +80,7 @@ void History::load() {
         warning_ = "Ignoring unsafe or oversized proto history (owner-only regular file required)";
         return;
     }
-    if (::flock(file.get(), LOCK_SH) != 0) {
+    if (::flock(file.get(), LOCK_SH | LOCK_NB) != 0) {
         warning_ = "Could not lock proto history";
         return;
     }
@@ -115,21 +134,22 @@ void History::add(std::string_view command) {
 void History::persist(std::string_view command) {
     std::error_code error;
     const auto directory = path_.parent_path();
-    if (std::filesystem::is_symlink(std::filesystem::symlink_status(directory, error))) {
-        warning_ = "Refusing a symlinked proto history directory";
-        return;
-    }
-    error.clear();
     std::filesystem::create_directories(directory, error);
-    if (error || ::chmod(directory.c_str(), 0700) != 0) {
+    if (error) {
         warning_ = "Could not create private proto history directory";
         return;
     }
-    const File file(::open(
-        path_.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK, 0600));
+    const File parent(::open(directory.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW));
+    if (parent.get() < 0 || !owned_directory(parent.get()) || ::fchmod(parent.get(), 0700) != 0) {
+        warning_ = "Could not safely open private proto history directory";
+        return;
+    }
+    const File file(::openat(parent.get(), "history",
+                             O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK,
+                             0600));
     struct stat status{};
-    if (file.get() < 0 || !owned_regular_file(file.get(), status) ||
-        ::fchmod(file.get(), 0600) != 0 || ::flock(file.get(), LOCK_EX) != 0) {
+    if (file.get() < 0 || ::flock(file.get(), LOCK_EX | LOCK_NB) != 0 ||
+        !owned_regular_file(file.get(), status) || ::fchmod(file.get(), 0600) != 0) {
         warning_ = "Could not safely save proto history";
         return;
     }

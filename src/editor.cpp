@@ -85,8 +85,8 @@ bool space_at(std::string_view text, std::size_t position) {
 
 std::vector<KeyEvent> InputDecoder::feed(std::string_view bytes) {
     std::vector<KeyEvent> events;
-    for (const unsigned char value : bytes) {
-        byte(value, events);
+    for (const char value : bytes) {
+        byte(static_cast<unsigned char>(value), events);
     }
     return events;
 }

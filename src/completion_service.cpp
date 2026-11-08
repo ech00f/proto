@@ -10,13 +10,13 @@
 namespace proto {
 
 CompletionService::CompletionService(Config config)
-    : config_(std::move(config)), worker_([this](std::stop_token stop) { run(stop); }) {}
+    : config_(std::move(config)), worker_([this] { run(); }) {}
 
 CompletionService::~CompletionService() {
-    worker_.request_stop();
+    stopping_.store(true, std::memory_order_relaxed);
     cancel();
     condition_.notify_all();
-    // worker_ is destroyed (and joined) before the state it uses.
+    worker_.join(); // Keep all request state alive until the HTTP cancellation has completed.
 }
 
 std::uint64_t CompletionService::submit(std::string prefix, std::filesystem::path cwd,
@@ -59,17 +59,20 @@ void CompletionService::publish(CompletionResult result) {
     }
 }
 
-void CompletionService::run(std::stop_token stop) {
-    while (!stop.stop_requested()) {
+void CompletionService::run() {
+    while (!stopping_.load(std::memory_order_relaxed)) {
         std::unique_lock lock(mutex_);
-        condition_.wait(lock, [&] { return stop.stop_requested() || pending_.has_value(); });
-        if (stop.stop_requested()) {
+        condition_.wait(lock, [&] {
+            return stopping_.load(std::memory_order_relaxed) || pending_.has_value();
+        });
+        if (stopping_.load(std::memory_order_relaxed)) {
             return;
         }
         const auto generation = pending_->generation;
         const auto ready = pending_->ready;
         const bool changed = condition_.wait_until(lock, ready, [&] {
-            return stop.stop_requested() || !pending_ || pending_->generation != generation;
+            return stopping_.load(std::memory_order_relaxed) || !pending_ ||
+                   pending_->generation != generation;
         });
         if (changed) {
             continue;

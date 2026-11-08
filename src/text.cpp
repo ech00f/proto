@@ -97,10 +97,25 @@ bool printable_utf8(std::string_view text) {
 bool looks_sensitive(std::string_view text) {
     const auto lowered = lowercase(text);
     static constexpr auto markers = std::to_array<std::string_view>(
-        {"password", "passwd", "secret", "token", "api_key", "api-key", "apikey", "authorization",
-         "private_key", "private-key", "access_key", "access-key", "sk-", "ghp_", "github_pat_",
-         "-----begin", "eyj"});
-    return contains_any(lowered, markers);
+        {"password", "passwd",        "secret",      "token",       "api_key",    "api-key",
+         "apikey",   "authorization", "private_key", "private-key", "access_key", "access-key",
+         "sk-",      "ghp_",          "github_pat_", "-----begin",  "eyj",        "passphrase",
+         "sshpass",  "bearer ",       "cookie:",     "--cookie",    "--user",     " -u ",
+         "id_rsa",   "id_ed25519",    "glpat-",      "xoxb-",       "xoxp-",      "aiza"});
+    if (contains_any(lowered, markers)) {
+        return true;
+    }
+    // User-info in URLs can contain a password even without a recognizable secret label.
+    std::size_t scheme = 0;
+    while ((scheme = lowered.find("://", scheme)) != std::string::npos) {
+        const auto start = scheme + 3;
+        const auto end = lowered.find_first_of("/ \"'", start);
+        if (std::string_view(lowered).substr(start, end - start).find('@') != text.npos) {
+            return true;
+        }
+        scheme = start;
+    }
+    return false;
 }
 
 bool private_name(std::string_view name) {
