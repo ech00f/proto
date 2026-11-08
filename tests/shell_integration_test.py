@@ -30,7 +30,7 @@ class ShellTests(unittest.TestCase):
         base = "/tmp/opencode" if Path("/tmp/opencode").is_dir() else None
         self.directory = tempfile.TemporaryDirectory(prefix="proto-shell-", dir=base)
         self.addCleanup(self.directory.cleanup)
-        self.home = Path(self.directory.name)
+        self.home = Path(self.directory.name).resolve()
         self.cwd = self.home / "work"
         self.cwd.mkdir()
         self.requests = []
@@ -151,8 +151,10 @@ class ShellTests(unittest.TestCase):
         terminal.read_until(b"YOUR TERMINAL")
         terminal.send("\x1b")
         terminal.read_until(b"\x1b[?1049l")
+        terminal.read_until(b"\x1b[?2004h")
+        terminal.read_until(b"draft > draft.txt")
         terminal.send("\r")
-        terminal.read_until(b"shell $ ")
+        terminal.prompt(b"shell $ ")
         self.assertEqual((self.cwd / "draft.txt").read_text(), "draft")
 
     def assert_danger_requires_confirmation(self, kind):

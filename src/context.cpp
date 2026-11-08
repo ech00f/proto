@@ -45,7 +45,17 @@ std::vector<std::string> directory_names(const std::filesystem::path &path, bool
 
 std::string display_path(const std::filesystem::path &path, const std::filesystem::path &home) {
     const auto normalized = path.lexically_normal();
-    const auto relative = normalized.lexically_relative(home.lexically_normal());
+    auto relative = normalized.lexically_relative(home.lexically_normal());
+    if (relative.empty() || *relative.begin() == "..") {
+        std::error_code error;
+        const auto resolved_home = std::filesystem::canonical(home, error);
+        if (!error) {
+            const auto resolved_path = std::filesystem::weakly_canonical(normalized, error);
+            if (!error) {
+                relative = resolved_path.lexically_relative(resolved_home);
+            }
+        }
+    }
     std::string result;
     if (relative == ".") {
         result = "~";

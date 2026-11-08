@@ -23,7 +23,7 @@ class IntegrationTests(unittest.TestCase):
         base = "/tmp/opencode" if Path("/tmp/opencode").is_dir() else None
         self.directory = tempfile.TemporaryDirectory(prefix="proto-integration-", dir=base)
         self.addCleanup(self.directory.cleanup)
-        self.root = Path(self.directory.name)
+        self.root = Path(self.directory.name).resolve()
         self.home = self.root / "home"
         self.cwd = self.home / "project"
         self.cwd.mkdir(parents=True)
@@ -300,6 +300,15 @@ class IntegrationTests(unittest.TestCase):
         result = self.run_cli("--context")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["cwd_entries"], ["main.cpp"])
+        self.assertEqual(self.requests, [])
+
+    def test_home_symlink_abbreviates_physical_cwd(self):
+        alias = self.root / "home-alias"
+        alias.symlink_to(self.home, target_is_directory=True)
+        self.environment["HOME"] = str(alias)
+        result = self.run_cli("--context")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["cwd"], "~/project")
         self.assertEqual(self.requests, [])
 
     def test_alt_arrows_cycle_inline_suggestions(self):

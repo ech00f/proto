@@ -182,6 +182,14 @@ void context_tests() {
     std::filesystem::create_directory_symlink(fixture.root, cwd / "outside");
     const auto context = proto::build_context(fixture.config, "cat ma", cwd, {"git status"});
     check(context.at("cwd") == "~/project", "Home path not abbreviated");
+    const auto alias = fixture.root / "home-alias";
+    std::filesystem::create_directory_symlink(fixture.config.home, alias);
+    check(proto::display_path(std::filesystem::canonical(cwd), alias) == "~/project",
+          "Symlinked home path not abbreviated");
+    check(proto::display_path(std::filesystem::canonical(fixture.config.home), alias) == "~",
+          "Physical home path not abbreviated");
+    check(proto::display_path(fixture.root, fixture.config.home) == fixture.root.generic_string(),
+          "Outside path incorrectly abbreviated");
     check(context.at("cwd_entries") == nlohmann::json::array({"main.cpp"}), "Unsafe cwd metadata");
     check(context.at("home_directories") == nlohmann::json::array({"Documents/", "project/"}),
           "Unsafe home metadata");

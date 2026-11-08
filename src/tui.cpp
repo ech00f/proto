@@ -13,9 +13,9 @@
 #include <chrono>
 #include <fcntl.h>
 #include <mutex>
-#include <poll.h>
 #include <stdexcept>
 #include <sys/ioctl.h>
+#include <sys/select.h>
 #include <termios.h>
 #include <thread>
 #include <unistd.h>
@@ -56,7 +56,7 @@ class Screen {
   public:
     Screen() {
         fd_ = ::open("/dev/tty", O_RDWR | O_CLOEXEC);
-        if (fd_ < 0 || ::tcgetattr(fd_, &original_) != 0) {
+        if (fd_ < 0 || fd_ >= FD_SETSIZE || ::tcgetattr(fd_, &original_) != 0) {
             if (fd_ >= 0) {
                 ::close(fd_);
             }
@@ -106,12 +106,16 @@ class Screen {
             }
             return {{Key::Cancel, {}}};
         }
-        struct pollfd input{fd_, POLLIN, 0};
-        const int ready = ::poll(&input, 1, 40);
+        // Darwin supports select, but not poll, on /dev/tty.
+        fd_set input;
+        FD_ZERO(&input);
+        FD_SET(fd_, &input);
+        struct timeval timeout{0, 40000};
+        const int ready = ::select(fd_ + 1, &input, nullptr, nullptr, &timeout);
         if (ready < 0 && errno != EINTR) {
             throw std::runtime_error("Cannot read TUI input");
         }
-        if (ready > 0 && (input.revents & POLLIN) != 0) {
+        if (ready > 0) {
             std::array<char, 512> bytes{};
             const auto count = ::read(fd_, bytes.data(), bytes.size());
             if (count <= 0) {
@@ -119,9 +123,6 @@ class Screen {
             }
             escape_time_ = std::chrono::steady_clock::now();
             return decoder_.feed(std::string_view(bytes.data(), static_cast<std::size_t>(count)));
-        }
-        if (ready > 0 && (input.revents & (POLLHUP | POLLERR)) != 0) {
-            return {{Key::Eof, {}}};
         }
         if (decoder_.pending_escape() &&
             std::chrono::steady_clock::now() - escape_time_ > std::chrono::milliseconds{80}) {
