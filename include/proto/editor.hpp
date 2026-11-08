@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -95,7 +96,7 @@ struct Frame {
 Frame make_frame(std::string_view prompt, const LineBuffer &line, std::string_view completion,
                  int columns);
 
-enum class ReadState { Submitted, Cancelled, Eof, Terminated };
+enum class ReadState { Submitted, Cancelled, Eof, Terminated, Plan };
 struct ReadResult {
     ReadState state;
     std::string command;
@@ -107,10 +108,11 @@ class Editor {
     explicit Editor(Config config);
     ReadResult read_line(const std::filesystem::path &cwd, const std::vector<std::string> &history);
     const std::string &warning() const;
+    const Config &config() const;
 
   private:
     Config config_;
-    CompletionService completions_;
+    std::unique_ptr<CompletionService> completions_;
     std::string warning_;
     bool offline_ = false;
 };

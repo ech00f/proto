@@ -13,6 +13,7 @@ class History {
   public:
     explicit History(const Config &config);
     void add(std::string_view command);
+    void configure(const Config &config);
     const std::vector<std::string> &entries() const;
     const std::string &warning() const;
 

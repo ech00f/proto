@@ -39,7 +39,6 @@ class TerminalProcess:
         os.close(gate_write)
         self.output = b""
         self.status = None
-        self.read_until(b" $ ")
 
     def send(self, text):
         self.output = b""
@@ -67,7 +66,7 @@ class TerminalProcess:
         while text not in self.output and time.monotonic() < deadline:
             self.pump(0.03)
         if text not in self.output:
-            raise AssertionError(f"Terminal did not print {text!r}: {self.output!r}")
+            raise AssertionError(f"Terminal did not print {text!r}: {self.output[-1200:]!r}")
         return self.output
 
     def prompt(self, text=b" $ "):
@@ -91,7 +90,7 @@ class TerminalProcess:
             else:
                 self.pump(0.03)
         if self.status is None:
-            raise AssertionError(f"Terminal process did not exit: {self.output!r}")
+            raise AssertionError(f"Terminal process did not exit: {self.output[-1200:]!r}")
         self.pump(0.01)
         return self.status
 
@@ -190,7 +189,7 @@ class IntegrationTests(unittest.TestCase):
         return subprocess.run([BINARY, *arguments], cwd=self.cwd, env=self.environment,
                               text=True, capture_output=True, timeout=5)
 
-    def terminal(self, *arguments):
+    def terminal(self, *arguments, initial=b" $ "):
         self.server.shutdown()
         self.thread.join()
         try:
@@ -198,6 +197,7 @@ class IntegrationTests(unittest.TestCase):
         finally:
             self.start_server()
         self.addCleanup(terminal.close)
+        terminal.read_until(initial)
         return terminal
 
     def wait_requests(self, count):
@@ -249,6 +249,105 @@ class IntegrationTests(unittest.TestCase):
     def test_secret_task_is_not_sent(self):
         result = self.run_cli("--plan", "use password=do-not-send")
         self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.requests, [])
+
+    def test_menu_preserves_draft_and_saves_settings(self):
+        terminal = self.terminal("--no-ai")
+        terminal.send("printf draft > draft.txt\x00")
+        terminal.read_until(b"YOUR TERMINAL")
+        terminal.send("2")
+        terminal.read_until(b"Alternatives")
+        terminal.send("\x1b[B\x1b[B\r\x15new-model\rs")
+        terminal.read_until(b"Saved & applied")
+        settings = json.loads((self.root / "config/proto/config.json").read_text())
+        self.assertEqual(settings["model"], "new-model")
+        self.assertNotIn("api_key", settings)
+        terminal.send("\x1b")
+        terminal.read_until(b"printf draft > draft.txt")
+        terminal.send("\r")
+        terminal.prompt()
+        self.assertEqual((self.cwd / "draft.txt").read_text(), "draft")
+
+    def test_menu_history_recall_never_executes(self):
+        terminal = self.terminal("--no-ai")
+        terminal.send("printf past > past.txt\r")
+        terminal.prompt()
+        (self.cwd / "past.txt").unlink()
+        terminal.send("\x1bOQ")
+        terminal.read_until(b"YOUR TERMINAL")
+        terminal.send("3")
+        terminal.read_until(b"printf past > past.txt")
+        terminal.send("\r")
+        terminal.read_until(b"\x1b[?1049l")
+        self.assertFalse((self.cwd / "past.txt").exists())
+        terminal.send("\x03")
+        terminal.prompt()
+        terminal.send("\x04")
+        self.assertEqual(terminal.wait(), 0)
+
+    def test_plan_runs_all_steps_only_after_confirmation(self):
+        self.response = lambda _context: json.dumps({"title": "Create two files", "steps": [
+            {"command": "printf one > one.txt"}, {"command": "printf two > two.txt"}]})
+        terminal = self.terminal("--run-plan", "create two files", initial=b"CONFIRM")
+        self.assertFalse((self.cwd / "one.txt").exists())
+        self.assertFalse((self.cwd / "two.txt").exists())
+        terminal.send("RUN\r")
+        self.assertEqual(terminal.wait(), 0)
+        self.assertEqual((self.cwd / "one.txt").read_text(), "one")
+        self.assertEqual((self.cwd / "two.txt").read_text(), "two")
+        self.assertTrue(terminal.restored())
+
+    def test_plan_preserves_shell_state_and_stops_on_error(self):
+        self.response = lambda _context: json.dumps({"title": "State and failure", "steps": [
+            {"command": "export VALUE=shared"}, {"command": "printf '%s' \"$VALUE\" > shared.txt"},
+            {"command": "false"}, {"command": "touch never.txt"}]})
+        terminal = self.terminal("--run-plan", "test state", initial=b"AI PLAN / one shell")
+        terminal.send("\x1b[F")
+        terminal.read_until(b"CONFIRM")
+        terminal.send("RUN\r")
+        self.assertEqual(terminal.wait(), 1)
+        self.assertEqual((self.cwd / "shared.txt").read_text(), "shared")
+        self.assertFalse((self.cwd / "never.txt").exists())
+
+    def test_plan_cancellation_and_terminal_restore(self):
+        self.response = lambda _context: json.dumps({"title": "Do not execute", "steps": [
+            {"command": "touch cancelled.txt"}]})
+        terminal = self.terminal("--run-plan", "cancel this plan", initial=b"CONFIRM")
+        terminal.send("\x1b")
+        self.assertEqual(terminal.wait(), 3)
+        self.assertFalse((self.cwd / "cancelled.txt").exists())
+        self.assertTrue(terminal.restored())
+
+    def test_sigterm_in_menu_restores_terminal(self):
+        terminal = self.terminal("--menu", initial=b"YOUR TERMINAL")
+        os.kill(terminal.pid, signal.SIGTERM)
+        self.assertEqual(terminal.wait(), 143)
+        self.assertTrue(terminal.restored())
+
+    def test_malformed_plan_step_cannot_capture_later_commands(self):
+        self.response = lambda _context: json.dumps({"title": "Malformed step", "steps": [
+            {"command": "printf 'broken"}, {"command": "touch never.txt"}]})
+        terminal = self.terminal("--run-plan", "test malformed step", initial=b"CONFIRM")
+        terminal.send("RUN\r")
+        self.assertNotEqual(terminal.wait(), 0)
+        self.assertFalse((self.cwd / "never.txt").exists())
+
+    def test_dangerous_command_requires_typed_confirmation(self):
+        (self.cwd / "keep.txt").write_text("keep")
+        terminal = self.terminal("--no-ai")
+        terminal.send("rm keep.txt\r")
+        terminal.read_until(b"DANGER / confirm command")
+        terminal.send("\r")
+        terminal.pump(0.1)
+        self.assertTrue((self.cwd / "keep.txt").exists())
+        terminal.send("\x1b")
+        terminal.prompt()
+        self.assertTrue((self.cwd / "keep.txt").exists())
+
+    def test_risk_cli_does_not_contact_model(self):
+        result = self.run_cli("--check", "rm file")
+        self.assertEqual(result.returncode, 3)
+        self.assertEqual(json.loads(result.stdout)["level"], "danger")
         self.assertEqual(self.requests, [])
 
     def test_context_preview_does_not_call_api(self):

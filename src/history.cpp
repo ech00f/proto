@@ -131,6 +131,10 @@ void History::add(std::string_view command) {
     }
 }
 
+void History::configure(const Config &config) {
+    enabled_ = config.persist_history;
+}
+
 void History::persist(std::string_view command) {
     std::error_code error;
     const auto directory = path_.parent_path();

@@ -9,6 +9,7 @@
 #include "proto/shell.hpp"
 #include "proto/signals.hpp"
 #include "proto/text.hpp"
+#include "proto/tui.hpp"
 
 #include <clocale>
 #include <iostream>
@@ -29,6 +30,10 @@ Usage: proto [--no-ai]
   --suggest PREFIX    Print alternative commands, one per line
   --suggest-json TEXT Print alternatives with risk labels as JSON
   --plan TASK         Preview an AI multi-command plan as JSON; never execute it
+  --run-plan TASK     Generate, review and confirm a plan in the TUI
+  --menu              Open the control center; selected history goes to stdout
+  --check COMMAND     Print risk JSON; exit 3 for danger, 0 otherwise
+  --confirm COMMAND   Confirm dangerous input in the TUI; exit 3 on cancellation
   --context           Preview the exact directory/history context sent to the model
   --no-ai             Use only local path and proto-history completions
 
@@ -52,6 +57,10 @@ int main(int argc, char **argv) {
         bool preview = false;
         bool alternatives = false;
         bool json = false;
+        bool menu = false;
+        bool run_plan = false;
+        bool check = false;
+        bool confirm = false;
         std::optional<std::string> prefix;
         std::optional<std::string> task;
         for (int index = 1; index < argc; ++index) {
@@ -66,16 +75,23 @@ int main(int argc, char **argv) {
             }
             if (argument == "--no-ai") {
                 no_ai = true;
-            } else if (argument == "--context" && !preview && !prefix && !task) {
+            } else if (argument == "--menu" && !menu && !preview && !prefix && !task) {
+                menu = true;
+            } else if (argument == "--context" && !menu && !preview && !prefix && !task) {
                 preview = true;
             } else if ((argument == "--complete" || argument == "--suggest" ||
-                        argument == "--suggest-json") &&
-                       !preview && !prefix && !task && index + 1 < argc) {
+                        argument == "--suggest-json" || argument == "--check" ||
+                        argument == "--confirm") &&
+                       !menu && !preview && !prefix && !task && index + 1 < argc) {
                 prefix = argv[++index];
                 alternatives = argument != "--complete";
                 json = argument == "--suggest-json";
-            } else if (argument == "--plan" && !preview && !prefix && !task && index + 1 < argc) {
+                check = argument == "--check";
+                confirm = argument == "--confirm";
+            } else if ((argument == "--plan" || argument == "--run-plan") && !menu && !preview &&
+                       !prefix && !task && index + 1 < argc) {
                 task = argv[++index];
+                run_plan = argument == "--run-plan";
             } else {
                 throw std::runtime_error("Unknown or conflicting argument; run proto --help");
             }
@@ -85,8 +101,35 @@ int main(int argc, char **argv) {
         config.validate();
         proto::History history(config);
         const auto cwd = std::filesystem::current_path();
+        if (prefix &&
+            (prefix->size() > proto::max_command_bytes || !proto::printable_utf8(*prefix))) {
+            throw std::runtime_error("Prefix must be printable UTF-8, at most 4096 bytes");
+        }
+        if (menu || confirm || run_plan) {
+            const proto::SignalGuard signals;
+            if (menu) {
+                if (const auto recalled = proto::show_menu(config, cwd, history.entries())) {
+                    std::cout << *recalled << '\n';
+                }
+                const int signal = proto::take_signal();
+                return signal != 0 ? 128 + signal : 0;
+            }
+            if (confirm) {
+                return proto::confirm_command(*prefix) ? 0 : 3;
+            }
+            if (const auto plan = proto::review_plan(config, *task, cwd, history.entries())) {
+                proto::Shell shell(config);
+                history.add("?? " + *task);
+                const auto result = shell.execute(proto::plan_script(*plan));
+                const int signal = proto::take_signal();
+                return signal != 0 ? 128 + signal : result.status;
+            }
+            const int signal = proto::take_signal();
+            return signal != 0 ? 128 + signal : 3;
+        }
         if (task) {
-            std::cout << proto::generate_plan(config, *task, cwd, history.entries()).json().dump(2) << '\n';
+            std::cout << proto::generate_plan(config, *task, cwd, history.entries()).json().dump(2)
+                      << '\n';
             return 0;
         }
         if (preview) {
@@ -94,14 +137,17 @@ int main(int argc, char **argv) {
             return 0;
         }
         if (prefix) {
-            if (prefix->size() > proto::max_command_bytes || !proto::printable_utf8(*prefix)) {
-                throw std::runtime_error("Prefix must be printable UTF-8, at most 4096 bytes");
+            if (check) {
+                const auto risk = proto::assess_command(*prefix);
+                std::cout << risk.json().dump() << '\n';
+                return risk.level == proto::RiskLevel::Danger ? 3 : 0;
             }
             auto candidates = proto::complete_locals(*prefix, cwd, config.home, history.entries(),
-                                                      alternatives ? config.suggestion_count : 1);
+                                                     alternatives ? config.suggestion_count : 1);
             if (config.ai_enabled && proto::can_send_prefix(*prefix)) {
                 try {
-                    const auto context = proto::build_context(config, *prefix, cwd, history.entries());
+                    const auto context =
+                        proto::build_context(config, *prefix, cwd, history.entries());
                     if (alternatives) {
                         auto generated = proto::ApiClient(config).suggest(context);
                         if (!generated.empty()) {
@@ -120,7 +166,8 @@ int main(int argc, char **argv) {
             if (json) {
                 auto output = nlohmann::json::array();
                 for (const auto &command : candidates) {
-                    output.push_back({{"command", command}, {"risk", proto::assess_command(command).json()}});
+                    output.push_back(
+                        {{"command", command}, {"risk", proto::assess_command(command).json()}});
                 }
                 std::cout << output.dump() << '\n';
             } else {
@@ -146,6 +193,8 @@ int main(int argc, char **argv) {
         std::string last_warning;
         for (;;) {
             const auto input = editor.read_line(std::filesystem::current_path(), history.entries());
+            config = editor.config();
+            history.configure(config);
             if (!editor.warning().empty() && editor.warning() != last_warning) {
                 last_warning = editor.warning();
                 std::cerr << "proto: " << last_warning << "; local completion remains available\n";
@@ -157,6 +206,21 @@ int main(int argc, char **argv) {
                 return shell.last_status();
             }
             if (input.state == proto::ReadState::Cancelled || input.command.empty()) {
+                continue;
+            }
+            if (input.state == proto::ReadState::Plan || input.command.starts_with("??")) {
+                auto goal =
+                    input.command.starts_with("??") ? input.command.substr(2) : input.command;
+                goal.erase(0, goal.find_first_not_of(' '));
+                try {
+                    if (const auto plan = proto::review_plan(
+                            config, goal, std::filesystem::current_path(), history.entries())) {
+                        history.add("?? " + goal);
+                        shell.execute(proto::plan_script(*plan));
+                    }
+                } catch (const std::exception &error) {
+                    std::cerr << "proto: " << error.what() << '\n';
+                }
                 continue;
             }
             history.add(input.command);

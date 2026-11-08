@@ -5,6 +5,7 @@
 #include "proto/signals.hpp"
 #include "proto/suggestions.hpp"
 #include "proto/text.hpp"
+#include "proto/tui.hpp"
 
 #include <algorithm>
 #include <array>
@@ -75,8 +76,9 @@ int terminal_columns() {
 }
 
 std::string render(const Frame &frame, RiskLevel risk) {
-    const auto ghost_color = risk == RiskLevel::Danger ? "\x1b[91m" :
-                             risk == RiskLevel::Caution ? "\x1b[33m" : "\x1b[90m";
+    const auto ghost_color = risk == RiskLevel::Danger    ? "\x1b[91m"
+                             : risk == RiskLevel::Caution ? "\x1b[33m"
+                                                          : "\x1b[90m";
     return "\r\x1b[2K\x1b[36m" + frame.prompt + "\x1b[0m" + frame.text + ghost_color + frame.ghost +
            "\x1b[0m\r\x1b[" + std::to_string(frame.cursor_column + 1) + "G";
 }
@@ -198,10 +200,11 @@ void InputDecoder::byte(unsigned char value, std::vector<KeyEvent> &events) {
         return;
     }
     const std::pair<unsigned char, Key> controls[]{
-        {0, Key::Menu}, {1, Key::Home},       {2, Key::Left},      {3, Key::Cancel},     {4, Key::Eof},
-        {5, Key::End},        {6, Key::Right},     {8, Key::Backspace},  {9, Key::Accept},
-        {10, Key::Enter},     {11, Key::KillEnd},  {12, Key::Redraw},    {13, Key::Enter},
-        {7, Key::Plan}, {21, Key::KillStart}, {23, Key::KillWord}, {127, Key::Backspace}};
+        {0, Key::Menu},       {1, Key::Home},   {2, Key::Left},       {3, Key::Cancel},
+        {4, Key::Eof},        {5, Key::End},    {6, Key::Right},      {8, Key::Backspace},
+        {9, Key::Accept},     {10, Key::Enter}, {11, Key::KillEnd},   {12, Key::Redraw},
+        {13, Key::Enter},     {7, Key::Plan},   {21, Key::KillStart}, {23, Key::KillWord},
+        {127, Key::Backspace}};
     for (const auto &[control, key] : controls) {
         if (value == control) {
             events.push_back({key, {}});
@@ -354,10 +357,15 @@ Frame make_frame(std::string_view prompt, const LineBuffer &line, std::string_vi
     return frame;
 }
 
-Editor::Editor(Config config) : config_(std::move(config)), completions_(config_) {}
+Editor::Editor(Config config)
+    : config_(std::move(config)), completions_(std::make_unique<CompletionService>(config_)) {}
 
 const std::string &Editor::warning() const {
     return warning_;
+}
+
+const Config &Editor::config() const {
+    return config_;
 }
 
 ReadResult Editor::read_line(const std::filesystem::path &cwd,
@@ -382,33 +390,38 @@ ReadResult Editor::read_line(const std::filesystem::path &cwd,
             status += " [" + std::to_string(suggestions.index() + 1) + "/" +
                       std::to_string(suggestions.size()) + "]";
         }
-        const auto risk = assess_command(suggestions.selected().empty() || suppressed || !line.at_end()
-                                              ? std::string_view(line.text()) : suggestions.selected());
+        const auto risk =
+            assess_command(suggestions.selected().empty() || suppressed || !line.at_end()
+                               ? std::string_view(line.text())
+                               : suggestions.selected());
         if (risk.level != RiskLevel::None) {
             status += " [" + std::string(risk_name(risk.level)) + "]";
         }
         return std::string("proto") + (offline_ ? " [local] " : " ") + short_path + status + " $ ";
     };
     const auto update = [&] {
-        if (pasting || suppressed || !line.at_end() || line.text().empty() || line.text().starts_with("??")) {
-            completions_.cancel();
+        if (pasting || suppressed || !line.at_end() || line.text().empty() ||
+            line.text().starts_with("??")) {
+            completions_->cancel();
             return;
         }
         suggestions.filter(line.text());
         if (!suggestions.selected().empty()) {
-            completions_.cancel();
+            completions_->cancel();
             return;
         }
-        request = completions_.submit(line.text(), cwd, history);
+        request = completions_->submit(line.text(), cwd, history);
     };
     const auto finish = [&](ReadState state, int signal = 0) {
-        completions_.cancel();
-        if (state == ReadState::Submitted) {
+        completions_->cancel();
+        if (state == ReadState::Submitted || state == ReadState::Plan) {
             write_terminal("\r\x1b[2K\x1b[36m" + prompt() + "\x1b[0m" + line.text() + "\n");
         } else {
             write_terminal(state == ReadState::Cancelled ? "^C\n" : "\n");
         }
-        return ReadResult{state, state == ReadState::Submitted ? line.text() : std::string{},
+        return ReadResult{state,
+                          state == ReadState::Submitted || state == ReadState::Plan ? line.text()
+                                                                                    : std::string{},
                           signal};
     };
 
@@ -417,7 +430,7 @@ ReadResult Editor::read_line(const std::filesystem::path &cwd,
         if (signal != 0) {
             return finish(signal == SIGINT ? ReadState::Cancelled : ReadState::Terminated, signal);
         }
-        while (auto result = completions_.take_result()) {
+        while (auto result = completions_->take_result()) {
             if (result->generation == request && result->prefix == line.text() && !suppressed &&
                 !pasting) {
                 if (result->ai_response) {
@@ -434,8 +447,9 @@ ReadResult Editor::read_line(const std::filesystem::path &cwd,
             }
         }
         const auto selected = suppressed ? std::string_view{} : suggestions.selected();
-        const auto frame = render(make_frame(prompt(), line, selected, terminal_columns()),
-                                  assess_command(selected.empty() ? std::string_view(line.text()) : selected).level);
+        const auto frame = render(
+            make_frame(prompt(), line, selected, terminal_columns()),
+            assess_command(selected.empty() ? std::string_view(line.text()) : selected).level);
         if (frame != last_frame) {
             write_terminal(frame);
             last_frame = frame;
@@ -477,6 +491,13 @@ ReadResult Editor::read_line(const std::filesystem::path &cwd,
                 suppressed = false;
                 break;
             case Key::Enter:
+                if (assess_command(line.text()).level == RiskLevel::Danger) {
+                    if (!confirm_command(line.text())) {
+                        write_terminal("\x1b[?2004h");
+                        return finish(ReadState::Cancelled);
+                    }
+                    write_terminal("\x1b[?2004h");
+                }
                 return finish(ReadState::Submitted);
             case Key::Cancel:
                 return finish(ReadState::Cancelled, SIGINT);
@@ -551,7 +572,7 @@ ReadResult Editor::read_line(const std::filesystem::path &cwd,
             case Key::Escape:
                 suggestions.clear();
                 suppressed = true;
-                completions_.cancel();
+                completions_->cancel();
                 break;
             case Key::Redraw:
                 write_terminal("\x1b[2J\x1b[H");
@@ -560,7 +581,7 @@ ReadResult Editor::read_line(const std::filesystem::path &cwd,
             case Key::PasteBegin:
                 pasting = true;
                 suggestions.clear();
-                completions_.cancel();
+                completions_->cancel();
                 break;
             case Key::PasteEnd:
                 pasting = false;
@@ -574,7 +595,21 @@ ReadResult Editor::read_line(const std::filesystem::path &cwd,
                 }
                 break;
             case Key::Menu:
+                completions_->cancel();
+                if (const auto recalled = show_menu(config_, cwd, history)) {
+                    line.replace(*recalled);
+                }
+                completions_ = std::make_unique<CompletionService>(config_);
+                suggestions.clear();
+                suppressed = false;
+                write_terminal("\x1b[?2004h");
+                last_frame.clear();
+                update();
+                break;
             case Key::Plan:
+                if (!line.text().empty()) {
+                    return finish(ReadState::Plan);
+                }
                 break;
             }
             if (line.text() != old_text || line.cursor() != old_cursor) {

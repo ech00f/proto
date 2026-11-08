@@ -37,7 +37,7 @@ if(PROTO_ENABLE_SANITIZERS)
     target_link_options(proto_core PUBLIC -fsanitize=address,undefined)
 endif()
 
-add_library(proto_terminal src/editor.cpp src/shell.cpp src/signals.cpp)
+add_library(proto_terminal src/editor.cpp src/shell.cpp src/signals.cpp src/tui.cpp)
 target_link_libraries(proto_terminal PUBLIC proto_core)
 target_compile_options(proto_terminal PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
 

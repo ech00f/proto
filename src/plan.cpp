@@ -41,7 +41,8 @@ RiskLevel Plan::risk() const {
 nlohmann::json Plan::json() const {
     auto commands = nlohmann::json::array();
     for (const auto &step : steps) {
-        commands.push_back({{"command", step.command}, {"explanation", step.explanation},
+        commands.push_back({{"command", step.command},
+                            {"explanation", step.explanation},
                             {"risk", step.risk.json()}});
     }
     return {{"title", title}, {"steps", commands}, {"risk", risk_name(risk())}};
@@ -61,8 +62,9 @@ Plan parse_plan(std::string_view content) {
             auto command = value.at("command").get<std::string>();
             auto explanation = value.value("explanation", std::string{});
             const auto first = command.find_first_not_of(' ');
-            if (first == command.npos || command[first] == '#' || command.size() > max_command_bytes ||
-                !printable_utf8(command) || explanation.size() > 512 || !printable_utf8(explanation)) {
+            if (first == command.npos || command[first] == '#' ||
+                command.size() > max_command_bytes || !printable_utf8(command) ||
+                explanation.size() > 512 || !printable_utf8(explanation)) {
                 throw std::runtime_error("Invalid plan step");
             }
             auto risk = assess_command(command);
@@ -70,7 +72,8 @@ Plan parse_plan(std::string_view content) {
         }
         return plan;
     } catch (const std::exception &) {
-        throw std::runtime_error("AI returned an invalid plan (expected 1–8 printable single-line commands)");
+        throw std::runtime_error(
+            "AI returned an invalid plan (expected 1–8 printable single-line commands)");
     }
 }
 
@@ -80,7 +83,8 @@ Plan generate_plan(const Config &config, std::string_view task, const std::files
         throw std::runtime_error("Enable AI to generate command plans");
     }
     if (!can_send_prefix(task)) {
-        throw std::runtime_error("Task is empty, too long, non-printable, or contains recognizable credentials");
+        throw std::runtime_error(
+            "Task is empty, too long, non-printable, or contains recognizable credentials");
     }
     auto context = build_context(config, "", cwd, history);
     context["task"] = task;
@@ -92,9 +96,13 @@ std::string plan_script(const Plan &plan) {
     std::string script = "set -e\n";
     std::size_t index = 0;
     for (const auto &step : checked.steps) {
-        script += "printf '%s\\n' " + quote("[" + std::to_string(++index) + "/" +
-                                           std::to_string(checked.steps.size()) + "] " + step.command) + '\n';
-        script += step.command + '\n';
+        script += "printf '%s\\n' " +
+                  quote("[" + std::to_string(++index) + "/" + std::to_string(checked.steps.size()) +
+                        "] " + step.command) +
+                  '\n';
+        script += "eval " + quote(step.command) + '\n';
+        script += "__proto_step_status=$?\n[ \"$__proto_step_status\" -eq 0 ] || exit "
+                  "\"$__proto_step_status\"\n";
     }
     return script;
 }
