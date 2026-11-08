@@ -192,4 +192,18 @@ bool Config::local_endpoint() const {
     return loopback(url_part(url.get(), CURLUPART_HOST));
 }
 
+nlohmann::json Config::shell_settings() const {
+    return {{"PROTO_API_BASE", api_base},
+            {"PROTO_MODEL", model},
+            {"PROTO_AI", ai_enabled ? "1" : "0"},
+            {"PROTO_CONTEXT", context_name(context_scope)},
+            {"PROTO_SUGGESTIONS", std::to_string(suggestion_count)},
+            {"PROTO_MAX_ENTRIES", std::to_string(max_entries)},
+            {"PROTO_DEBOUNCE_MS", std::to_string(debounce.count())},
+            {"PROTO_TIMEOUT_MS", std::to_string(timeout.count())},
+            {"PROTO_NO_HISTORY", persist_history ? "0" : "1"},
+            {"PROTO_SEND_HISTORY", send_history ? "1" : "0"},
+            {"PROTO_THEME", theme}};
+}
+
 } // namespace proto

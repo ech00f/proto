@@ -160,6 +160,18 @@ class IntegrationTests(unittest.TestCase):
         self.assertFalse((self.cwd / "not-executed.txt").exists())
         self.assertEqual(self.requests, [])
 
+    def test_shell_settings_never_contain_credentials(self):
+        self.environment["PROTO_API_KEY"] = "never-print-this-api-key"
+        result = self.run_cli("--settings-shell")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        records = [line.split("\t") for line in result.stdout.splitlines()]
+        self.assertTrue(all(len(record) == 3 and record[0] == "setting" for record in records))
+        settings = {record[1]: record[2] for record in records}
+        self.assertEqual(settings["PROTO_MODEL"], "fixture-model")
+        self.assertNotIn("PROTO_API_KEY", settings)
+        self.assertNotIn("never-print-this-api-key", result.stdout)
+        self.assertEqual(self.requests, [])
+
     def test_approved_script_is_printed_but_never_executed(self):
         self.response = lambda _context: json.dumps({"title": "Return a script", "steps": [
             {"command": "touch reviewed.txt"}]})

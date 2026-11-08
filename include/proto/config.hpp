@@ -35,6 +35,7 @@ struct Config {
     void load_file();
     void save() const;
     nlohmann::json json() const;
+    nlohmann::json shell_settings() const;
 };
 
 std::string_view context_name(ContextScope scope);

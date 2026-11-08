@@ -34,6 +34,8 @@ Usage: proto [--no-ai]
   --run-plan TASK     Generate, review and confirm a plan in the TUI
   --approve-plan TASK Review a plan, then print its script only after confirmation
   --menu              Open the control center; selected history goes to stdout
+  --menu-shell        Open the menu and return non-secret settings to shell widgets
+  --settings-shell    Print non-secret setting records for shell widgets
   --check COMMAND     Print risk JSON; exit 3 for danger, 0 otherwise
   --confirm COMMAND   Confirm dangerous input in the TUI; exit 3 on cancellation
   --record COMMAND    Add non-sensitive input to proto history; never execute it
@@ -51,6 +53,13 @@ File contents and shell history are never imported. PROTO_SEND_HISTORY=1 opts in
 to sharing recent non-sensitive proto commands. See README.md for all settings.
 )";
 
+void print_shell_settings(const proto::Config &config) {
+    const auto settings = config.shell_settings();
+    for (const auto &[name, value] : settings.items()) {
+        std::cout << "setting\t" << name << '\t' << value.get<std::string>() << '\n';
+    }
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -61,6 +70,8 @@ int main(int argc, char **argv) {
         bool alternatives = false;
         bool json = false;
         bool menu = false;
+        bool menu_shell = false;
+        bool settings_shell = false;
         bool run_plan = false;
         bool approve_plan = false;
         bool shell_format = false;
@@ -81,14 +92,20 @@ int main(int argc, char **argv) {
             }
             if (argument == "--no-ai") {
                 no_ai = true;
-            } else if (argument == "--menu" && !menu && !preview && !prefix && !task) {
+            } else if ((argument == "--menu" || argument == "--menu-shell") && !menu &&
+                       !settings_shell && !preview && !prefix && !task) {
                 menu = true;
-            } else if (argument == "--context" && !menu && !preview && !prefix && !task) {
+                menu_shell = argument == "--menu-shell";
+            } else if (argument == "--settings-shell" && !menu && !settings_shell && !preview &&
+                       !prefix && !task) {
+                settings_shell = true;
+            } else if (argument == "--context" && !menu && !settings_shell && !preview && !prefix &&
+                       !task) {
                 preview = true;
             } else if ((argument == "--complete" || argument == "--suggest" ||
                         argument == "--suggest-json" || argument == "--suggest-shell" ||
                         argument == "--check" || argument == "--confirm" || argument == "--record") &&
-                       !menu && !preview && !prefix && !task && index + 1 < argc) {
+                       !menu && !settings_shell && !preview && !prefix && !task && index + 1 < argc) {
                 prefix = argv[++index];
                 alternatives = argument != "--complete";
                 json = argument == "--suggest-json";
@@ -97,7 +114,7 @@ int main(int argc, char **argv) {
                 shell_format = argument == "--suggest-shell";
                 record = argument == "--record";
             } else if ((argument == "--plan" || argument == "--run-plan" ||
-                        argument == "--approve-plan") && !menu && !preview &&
+                        argument == "--approve-plan") && !menu && !settings_shell && !preview &&
                        !prefix && !task && index + 1 < argc) {
                 task = argv[++index];
                 run_plan = argument == "--run-plan";
@@ -109,6 +126,10 @@ int main(int argc, char **argv) {
         auto config = proto::Config::from_environment();
         config.ai_enabled = config.ai_enabled && !no_ai;
         config.validate();
+        if (settings_shell) {
+            print_shell_settings(config);
+            return 0;
+        }
         proto::History history(config);
         const auto cwd = std::filesystem::current_path();
         if (prefix &&
@@ -118,14 +139,23 @@ int main(int argc, char **argv) {
         if (menu || confirm || run_plan || approve_plan) {
             const proto::SignalGuard signals;
             if (menu) {
-                if (const auto recalled = proto::show_menu(config, cwd, history.entries())) {
-                    std::cout << *recalled << '\n';
-                }
+                const auto recalled = proto::show_menu(config, cwd, history.entries());
                 const int signal = proto::take_signal();
-                return signal != 0 ? 128 + signal : 0;
+                if (signal != 0) {
+                    return 128 + signal;
+                }
+                if (menu_shell) {
+                    print_shell_settings(config);
+                }
+                if (recalled) {
+                    std::cout << (menu_shell ? "recall\t" : "") << *recalled << '\n';
+                }
+                return 0;
             }
             if (confirm) {
-                return proto::confirm_command(*prefix) ? 0 : 3;
+                const bool approved = proto::confirm_command(*prefix);
+                const int signal = proto::take_signal();
+                return signal != 0 ? 128 + signal : approved ? 0 : 3;
             }
             if (const auto plan = proto::review_plan(config, *task, cwd, history.entries())) {
                 history.add("?? " + *task);

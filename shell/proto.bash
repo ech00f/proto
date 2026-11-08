@@ -15,10 +15,30 @@ if [[ ! -x $PROTO_BIN ]]; then
     return 1
 fi
 PROTO_BIN=$(cd -- "$(dirname -- "$PROTO_BIN")" && printf '%s/%s' "$PWD" "$(basename -- "$PROTO_BIN")")
+_proto_bash_options=()
+
+_proto_bash_cli() {
+    command env "PROTO_SHELL=$BASH" "${_proto_bash_options[@]}" "$PROTO_BIN" "$@"
+}
+
+_proto_bash_settings() {
+    local record rest name value
+    _proto_bash_options=()
+    while IFS= read -r record; do
+        [[ $record == $'setting\t'* ]] || continue
+        rest=${record#*$'\t'}
+        name=${rest%%$'\t'*}
+        value=${rest#*$'\t'}
+        case $name in
+            PROTO_API_BASE|PROTO_MODEL|PROTO_AI|PROTO_CONTEXT|PROTO_SUGGESTIONS|PROTO_MAX_ENTRIES|PROTO_DEBOUNCE_MS|PROTO_TIMEOUT_MS|PROTO_NO_HISTORY|PROTO_SEND_HISTORY|PROTO_THEME)
+                _proto_bash_options+=("$name=$value") ;;
+        esac
+    done <<< "$1"
+}
 
 proto-plan() {
     local script result
-    script=$("$PROTO_BIN" --approve-plan "$*")
+    script=$(_proto_bash_cli --approve-plan "$*")
     result=$?
     (( result == 0 )) || return "$result"
     ( eval "$script" )
@@ -68,7 +88,7 @@ _proto_bash_suggest() {
             _proto_bash_commands+=("$command")
             _proto_bash_risks+=("$risk")
         fi
-    done < <("$PROTO_BIN" --suggest-shell "$_proto_bash_prefix" 2>/dev/null)
+    done < <(_proto_bash_cli --suggest-shell "$_proto_bash_prefix" 2>/dev/null)
     _proto_bash_index=0
     _proto_bash_choose
 }
@@ -101,13 +121,15 @@ _proto_bash_previous() {
 }
 
 _proto_bash_menu() {
-    local recalled
-    recalled=$("$PROTO_BIN" --menu)
-    if [[ -n $recalled ]]; then
-        READLINE_LINE=$recalled
-        local LC_ALL=C
-        READLINE_POINT=${#READLINE_LINE}
-    fi
+    local output record LC_ALL=C
+    output=$(_proto_bash_cli --menu-shell) || return
+    _proto_bash_settings "$output"
+    while IFS= read -r record; do
+        if [[ $record == $'recall\t'* ]]; then
+            READLINE_LINE=${record#*$'\t'}
+            READLINE_POINT=${#READLINE_LINE}
+        fi
+    done <<< "$output"
 }
 
 _proto_bash_plan() {
@@ -119,17 +141,17 @@ _proto_bash_plan() {
 _proto_bash_prepare() {
     local script result
     if [[ $READLINE_LINE == '??'* ]]; then
-        script=$("$PROTO_BIN" --approve-plan "${READLINE_LINE:2}")
+        script=$(_proto_bash_cli --approve-plan "${READLINE_LINE:2}")
         result=$?
         if (( result == 0 )); then
             READLINE_LINE=$'(\n'"$script"$'\n)'
         else
             READLINE_LINE=''
         fi
-    elif ! "$PROTO_BIN" --confirm "$READLINE_LINE"; then
+    elif ! _proto_bash_cli --confirm "$READLINE_LINE"; then
         READLINE_LINE=''
     else
-        "$PROTO_BIN" --record "$READLINE_LINE" >/dev/null 2>&1
+        _proto_bash_cli --record "$READLINE_LINE" >/dev/null 2>&1
     fi
     local LC_ALL=C
     READLINE_POINT=${#READLINE_LINE}
@@ -153,6 +175,10 @@ proto-enable() {
             return 0
         fi
     fi
+    _proto_bash_options=()
+    local settings
+    settings=$(_proto_bash_cli --settings-shell) || return
+    _proto_bash_settings "$settings"
     _proto_bash_keys=('\C-x\C-a' '\e[1;3A' '\e[1;3B' '\e,' '\e.' '\eOQ' '\e[12~' '\C-@' '\C-g' '\C-m' '\C-j' '\C-x\C-v' '\C-x\C-j')
     _proto_bash_maps=()
     _proto_bash_saved=()

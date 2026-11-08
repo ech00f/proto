@@ -26,6 +26,7 @@ class TerminalProcess:
         os.close(gate_write)
         self.output = b""
         self.status = None
+        self.closed = False
 
     def send(self, text):
         self.output = b""
@@ -88,6 +89,8 @@ class TerminalProcess:
         fcntl.ioctl(self.master, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, 0, 0))
 
     def close(self, termination_signal=signal.SIGTERM):
+        if self.closed:
+            return
         if self.status is None:
             try:
                 os.kill(self.pid, termination_signal)
@@ -99,3 +102,4 @@ class TerminalProcess:
                 os.kill(self.pid, signal.SIGKILL)
                 os.waitpid(self.pid, 0)
         os.close(self.master)
+        self.closed = True

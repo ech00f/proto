@@ -34,6 +34,7 @@ class ShellTests(unittest.TestCase):
         self.cwd = self.home / "work"
         self.cwd.mkdir()
         self.requests = []
+        self.models = []
         self.response = lambda context: context["prefix"]
         owner = self
 
@@ -42,6 +43,7 @@ class ShellTests(unittest.TestCase):
                 document = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 context = json.loads(document["messages"][-1]["content"])
                 owner.requests.append(context)
+                owner.models.append(document["model"])
                 payload = json.dumps({"choices": [{"message": {"content": owner.response(context)}}]}).encode()
                 try:
                     self.send_response(200)
@@ -220,6 +222,30 @@ class ShellTests(unittest.TestCase):
         terminal.send("exit\r")
         self.assertEqual(terminal.wait(), 0)
         self.assertTrue(terminal.restored())
+
+    def test_bash_menu_settings_apply_without_changing_user_environment(self):
+        self.environment["PROTO_AI"] = "1"
+        self.response = lambda context: context["prefix"] + "-suggested"
+        for native in (True, False):
+            with self.subTest(native=native):
+                terminal = self.shell(native=native)
+                terminal.send("\x1bOQ")
+                terminal.read_until(b"YOUR TERMINAL")
+                terminal.send("2\x1b[B\x1b[B\r\x15changed-model\r")
+                terminal.read_until(b"Changed locally")
+                terminal.send("s")
+                terminal.read_until(b"Saved & applied")
+                terminal.send("\x1b")
+                terminal.read_until(b"\x1b[?1049l")
+                terminal.send("printf configuration")
+                if not native:
+                    terminal.send("\x18\x01")
+                terminal.read_until(b"-suggested")
+                self.assertEqual(self.models[-1], "changed-model")
+                terminal.send("\x15printf '%s' \"$PROTO_MODEL\" > environment.txt\r")
+                terminal.read_until(b"shell $ ")
+                self.assertEqual((self.cwd / "environment.txt").read_text(), "shell-fixture")
+                self.close_shell(terminal)
 
     def test_bash_fallback_and_restore(self):
         if BASH is None:

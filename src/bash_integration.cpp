@@ -109,18 +109,12 @@ class CompletionProcess {
             std::erase_if(environment, [&](const auto &entry) { return entry.starts_with(key); });
             environment.push_back(key + value);
         };
-        put("PROTO_API_BASE", config.api_base);
-        put("PROTO_MODEL", config.model);
+        const auto settings = config.shell_settings();
+        for (const auto &[name, value] : settings.items()) {
+            put(name, value.get<std::string>());
+        }
         put("PROTO_API_KEY", config.api_key);
-        put("PROTO_AI", config.ai_enabled ? "1" : "0");
         put("PROTO_SHELL", config.shell);
-        put("PROTO_CONTEXT", std::string(proto::context_name(config.context_scope)));
-        put("PROTO_SUGGESTIONS", std::to_string(config.suggestion_count));
-        put("PROTO_MAX_ENTRIES", std::to_string(config.max_entries));
-        put("PROTO_TIMEOUT_MS", std::to_string(config.timeout.count()));
-        put("PROTO_NO_HISTORY", config.persist_history ? "0" : "1");
-        put("PROTO_SEND_HISTORY", config.send_history ? "1" : "0");
-        put("PROTO_THEME", config.theme);
         std::vector<char *> env;
         for (auto &entry : environment) {
             env.push_back(entry.data());
