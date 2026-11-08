@@ -45,13 +45,14 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build pkg-config g++ clang python3 libcurl4-openssl-dev nlohmann-json3-dev
+          sudo apt-get install -y cmake ninja-build pkg-config g++ clang python3 libcurl4-openssl-dev nlohmann-json3-dev bash-builtins libreadline-dev zsh
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: |
-          brew install cmake ninja pkg-config curl nlohmann-json
+          brew install cmake ninja pkg-config curl nlohmann-json bash readline
           echo "PKG_CONFIG_PATH=$(brew --prefix curl)/lib/pkgconfig" >> "$GITHUB_ENV"
-          echo "CMAKE_PREFIX_PATH=$(brew --prefix)" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix);$(brew --prefix readline);$(brew --prefix bash)" >> "$GITHUB_ENV"
+          echo "PROTO_TEST_BASH=$(brew --prefix bash)/bin/bash" >> "$GITHUB_ENV"
       - name: Configure
         run: >-
           cmake -S . -B build -G Ninja

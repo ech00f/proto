@@ -2,11 +2,15 @@ import errno
 import fcntl
 import os
 import pty
+import re
 import select
 import signal
 import struct
 import termios
 import time
+
+
+ANSI = re.compile(rb"\x1b(?:\[[0-?]*[ -/]*[@-~]|[78]|[ -/]*[@-~])")
 
 
 class TerminalProcess:
@@ -51,11 +55,15 @@ class TerminalProcess:
 
     def read_until(self, text, timeout=4):
         deadline = time.monotonic() + timeout
-        while text not in self.output and time.monotonic() < deadline:
+        while text not in self.output and text not in self.plain_output and time.monotonic() < deadline:
             self.pump(0.03)
-        if text not in self.output:
+        if text not in self.output and text not in self.plain_output:
             raise AssertionError(f"Terminal did not print {text!r}: {self.output[-1200:]!r}")
         return self.output
+
+    @property
+    def plain_output(self):
+        return ANSI.sub(b"", self.output)
 
     def prompt(self, text=b" $ "):
         self.read_until(b"\x1b[?2004h")

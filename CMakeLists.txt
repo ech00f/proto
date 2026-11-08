@@ -93,4 +93,4 @@ if(BUILD_TESTING)
 endif()
 
 install(TARGETS proto RUNTIME DESTINATION bin)
-install(FILES shell/proto.bash DESTINATION share/proto)
+install(FILES shell/proto.bash shell/proto.zsh DESTINATION share/proto)
