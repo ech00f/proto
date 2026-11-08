@@ -329,6 +329,20 @@ void editor_tests() {
     check(decoder.feed("\x1b[").empty(), "Partial escape emitted text");
     const auto arrow = decoder.feed("D");
     check(arrow.size() == 1 && arrow[0].key == proto::Key::Left, "Split arrow sequence");
+    const std::pair<std::string_view, proto::Key> arrows[]{
+        {"\x1b[A", proto::Key::Up},   {"\x1bOA", proto::Key::Up},    {"\x1b[B", proto::Key::Down},
+        {"\x1bOB", proto::Key::Down}, {"\x1b[C", proto::Key::Right}, {"\x1bOC", proto::Key::Right},
+        {"\x1b[D", proto::Key::Left}, {"\x1bOD", proto::Key::Left}};
+    for (const auto &[sequence, key] : arrows) {
+        for (std::size_t split = 0; split <= sequence.size(); ++split) {
+            proto::InputDecoder split_decoder;
+            auto events = split_decoder.feed(sequence.substr(0, split));
+            const auto rest = split_decoder.feed(sequence.substr(split));
+            events.insert(events.end(), rest.begin(), rest.end());
+            check(events.size() == 1 && events[0].key == key, "Normal/application arrow decoding");
+            check(!split_decoder.pending_escape(), "Arrow left an unfinished escape");
+        }
+    }
     check(decoder.feed("\xd0").empty(), "Partial UTF-8 emitted text");
     const auto unicode = decoder.feed("\x94");
     check(unicode.size() == 1 && unicode[0].text == "Д", "Split UTF-8 input");

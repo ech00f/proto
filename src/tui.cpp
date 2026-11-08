@@ -393,14 +393,18 @@ std::optional<std::string> show_menu(Config &config, const std::filesystem::path
     std::string query;
     std::string message = "Local-first · no file-content uploads · plans require approval";
     for (;;) {
-        Canvas canvas(screen, tabs[page], display_path(cwd, working.home),
-                      editing || entering_task || searching
-                          ? "Enter apply · Esc cancel · Ctrl+U clear"
-                          : "1–5 / Tab pages · ↑↓ select · Enter edit/recall · s save · Esc close",
-                      working.theme);
+        Canvas canvas(
+            screen, tabs[page], display_path(cwd, working.home),
+            editing || entering_task || searching
+                ? "Enter apply · Esc cancel · Ctrl+U clear"
+                : "1–5 / Tab pages · ↑↓ move · ←→ pages/value · Enter edit/recall · s save · Esc",
+            working.theme);
         const int body_left = canvas.left + 20;
         const int body_width = canvas.width - 24;
         const auto values = settings(working);
+        const auto context_lines = [&] {
+            return wrapped(build_context(working, "", cwd, history).dump(), body_width);
+        };
         std::vector<std::string> matches;
         for (auto it = history.rbegin(); it != history.rend(); ++it) {
             if (it->find(query) != it->npos) {
@@ -474,8 +478,7 @@ std::optional<std::string> show_menu(Config &config, const std::filesystem::path
                     body(3, "No matching proto history", muted);
                 }
             } else if (page == 3) {
-                const auto context = build_context(working, "", cwd, history);
-                const auto lines = wrapped(context.dump(), body_width);
+                const auto lines = context_lines();
                 body(0, "OUTBOUND METADATA / no file contents", green);
                 for (std::size_t row = selection;
                      row < lines.size() &&
@@ -564,16 +567,30 @@ std::optional<std::string> show_menu(Config &config, const std::filesystem::path
             } else if (event.key == Key::Accept) {
                 page = (page + 1) % tabs.size();
                 selection = 0;
-            } else if (event.key == Key::Up && selection > 0) {
-                --selection;
+            } else if (event.key == Key::Up) {
+                if (selection > 0) {
+                    --selection;
+                } else if (page > 0) {
+                    --page;
+                }
             } else if (event.key == Key::Down) {
                 const auto maximum = page == 1   ? values.size()
                                      : page == 2 ? matches.size()
-                                     : page == 3 ? 1000
+                                     : page == 3 ? context_lines().size()
                                                  : 1;
                 if (selection + 1 < maximum) {
                     ++selection;
+                } else if (page + 1 < tabs.size()) {
+                    ++page;
+                    selection = 0;
                 }
+            } else if (page != 1 && (event.key == Key::Left || event.key == Key::Right)) {
+                if (event.key == Key::Left && page > 0) {
+                    --page;
+                } else if (event.key == Key::Right && page + 1 < tabs.size()) {
+                    ++page;
+                }
+                selection = 0;
             } else if (page == 1 && (event.key == Key::Enter || event.key == Key::Left ||
                                      event.key == Key::Right)) {
                 if (event.key == Key::Enter &&

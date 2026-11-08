@@ -119,6 +119,7 @@ void InputDecoder::escape(std::vector<KeyEvent> &events) {
         events.push_back({Key::PasteEnd, {}});
     } else if (!pasting_) {
         const std::pair<std::string_view, Key> sequences[]{{"\x1b[A", Key::Up},
+                                                           {"\x1bOA", Key::Up},
                                                            {"\x1b[1;3A", Key::PreviousSuggestion},
                                                            {"\x1b[1;3B", Key::NextSuggestion},
                                                            {"\x1b,", Key::PreviousSuggestion},
@@ -126,8 +127,11 @@ void InputDecoder::escape(std::vector<KeyEvent> &events) {
                                                            {"\x1bOQ", Key::Menu},
                                                            {"\x1b[12~", Key::Menu},
                                                            {"\x1b[B", Key::Down},
+                                                           {"\x1bOB", Key::Down},
                                                            {"\x1b[C", Key::Right},
+                                                           {"\x1bOC", Key::Right},
                                                            {"\x1b[D", Key::Left},
+                                                           {"\x1bOD", Key::Left},
                                                            {"\x1b[H", Key::Home},
                                                            {"\x1b[F", Key::End},
                                                            {"\x1bOH", Key::Home},

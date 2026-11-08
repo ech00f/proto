@@ -243,6 +243,30 @@ class IntegrationTests(unittest.TestCase):
         terminal.send("\x04")
         self.assertEqual(terminal.wait(), 0)
 
+    def test_menu_arrows_navigate_pages_and_edit_settings(self):
+        for prefix in ("\x1b[", "\x1bO"):
+            with self.subTest(prefix=prefix):
+                terminal = self.terminal("--menu", initial=b"YOUR TERMINAL")
+                terminal.send(prefix + "B")
+                terminal.read_until(b"Alternatives")
+                terminal.send(prefix + "A")
+                terminal.read_until(b"YOUR TERMINAL")
+                terminal.send(prefix + "C")
+                terminal.read_until(b"Alternatives")
+                terminal.send("3" + prefix + "C")
+                terminal.read_until(b"OUTBOUND METADATA")
+                terminal.send(prefix + "D")
+                terminal.read_until(b"No matching proto history")
+                terminal.send("2" + prefix + "B" + prefix + "B" + "\r")
+                terminal.read_until(b"EDIT  /  Model")
+                terminal.send("\x15arrow-model" + prefix + "D" + prefix + "C" + "X\rs")
+                terminal.read_until(b"Saved & applied")
+                settings = json.loads((self.root / "config/proto/config.json").read_text())
+                self.assertEqual(settings["model"], "arrow-modelX")
+                terminal.send("\x1b")
+                self.assertEqual(terminal.wait(), 0)
+                self.assertTrue(terminal.restored())
+
     def test_plan_runs_all_steps_only_after_confirmation(self):
         self.response = lambda _context: json.dumps({"title": "Create two files", "steps": [
             {"command": "printf one > one.txt"}, {"command": "printf two > two.txt"}]})
@@ -569,12 +593,16 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(terminal.wait(), 0)
 
     def test_up_down_restore_unsubmitted_draft(self):
-        terminal = self.terminal("--no-ai")
-        terminal.send("printf history > history.txt\r")
-        terminal.prompt()
-        terminal.send("printf draft > draft.txt\x1b[A\x1b[B\r")
-        terminal.prompt()
-        self.assertEqual((self.cwd / "draft.txt").read_text(), "draft")
+        for prefix in ("\x1b[", "\x1bO"):
+            with self.subTest(prefix=prefix):
+                terminal = self.terminal("--no-ai")
+                terminal.send("printf history > history.txt\r")
+                terminal.prompt()
+                terminal.send("printf draft > draft.txt" + prefix + "A" + prefix + "B\r")
+                terminal.prompt()
+                self.assertEqual((self.cwd / "draft.txt").read_text(), "draft")
+                terminal.send("\x04")
+                self.assertEqual(terminal.wait(), 0)
 
     def test_right_arrow_accepts_and_enter_keeps_exit_status(self):
         self.response = lambda _context: "printf right > right.txt"
