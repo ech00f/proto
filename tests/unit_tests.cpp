@@ -175,6 +175,11 @@ void completion_tests() {
     check(!proto::normalize_completion("git st", "status"), "Prefix was replaced");
     check(!proto::normalize_completion("git st", "```sh\ngit status\n```"), "Markdown accepted");
     check(!proto::normalize_completion("git status", "git status"), "Empty suffix accepted");
+    check(proto::normalize_suggestions("git st", R"({"completions":["git status","git stash","git status","rm -rf /",4]})", 3) ==
+              std::vector<std::string>{"git status", "git stash"},
+          "Alternative validation and deduplication");
+    check(proto::normalize_suggestions("git st", R"({"completions":["git status","git stash"]})", 1).size() == 1,
+          "Alternative count limit");
     Fixture fixture;
     std::filesystem::create_directory(fixture.config.home / "Documents");
     std::ofstream(fixture.config.home / "my file.txt") << "test";

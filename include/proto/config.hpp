@@ -19,6 +19,7 @@ struct Config {
     std::chrono::milliseconds debounce{250};
     std::chrono::milliseconds timeout{5000};
     std::size_t max_entries = 80;
+    std::size_t suggestion_count = 3;
     ContextScope context_scope = ContextScope::Home;
     bool ai_enabled = true;
     bool persist_history = true;

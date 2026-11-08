@@ -4,6 +4,7 @@
 #include "proto/editor.hpp"
 #include "proto/history.hpp"
 #include "proto/local_completion.hpp"
+#include "proto/safety.hpp"
 #include "proto/shell.hpp"
 #include "proto/signals.hpp"
 #include "proto/text.hpp"
@@ -24,6 +25,8 @@ Usage: proto [--no-ai]
        proto --help | --version
 
   --complete PREFIX   Print a complete command without executing it
+  --suggest PREFIX    Print alternative commands, one per line
+  --suggest-json TEXT Print alternatives with risk labels as JSON
   --context           Preview the exact directory/history context sent to the model
   --no-ai             Use only local path and proto-history completions
 
@@ -45,6 +48,8 @@ int main(int argc, char **argv) {
     try {
         bool no_ai = false;
         bool preview = false;
+        bool alternatives = false;
+        bool json = false;
         std::optional<std::string> prefix;
         for (int index = 1; index < argc; ++index) {
             const std::string argument = argv[index];
@@ -60,8 +65,12 @@ int main(int argc, char **argv) {
                 no_ai = true;
             } else if (argument == "--context" && !preview && !prefix) {
                 preview = true;
-            } else if (argument == "--complete" && !preview && !prefix && index + 1 < argc) {
+            } else if ((argument == "--complete" || argument == "--suggest" ||
+                        argument == "--suggest-json") &&
+                       !preview && !prefix && index + 1 < argc) {
                 prefix = argv[++index];
+                alternatives = argument != "--complete";
+                json = argument == "--suggest-json";
             } else {
                 throw std::runtime_error("Unknown or conflicting argument; run proto --help");
             }
@@ -79,23 +88,36 @@ int main(int argc, char **argv) {
             if (prefix->size() > proto::max_command_bytes || !proto::printable_utf8(*prefix)) {
                 throw std::runtime_error("Prefix must be printable UTF-8, at most 4096 bytes");
             }
-            auto completion = proto::complete_local(*prefix, cwd, config.home, history.entries());
+            auto candidates = proto::complete_locals(*prefix, cwd, config.home, history.entries(),
+                                                      alternatives ? config.suggestion_count : 1);
             if (config.ai_enabled && proto::can_send_prefix(*prefix)) {
                 try {
-                    const auto generated = proto::ApiClient(config).complete(
-                        proto::build_context(config, *prefix, cwd, history.entries()));
-                    if (generated) {
-                        completion = generated;
+                    const auto context = proto::build_context(config, *prefix, cwd, history.entries());
+                    if (alternatives) {
+                        auto generated = proto::ApiClient(config).suggest(context);
+                        if (!generated.empty()) {
+                            candidates = std::move(generated);
+                        }
+                    } else if (const auto generated = proto::ApiClient(config).complete(context)) {
+                        candidates = {*generated};
                     }
                 } catch (const std::exception &error) {
                     std::cerr << "proto: " << error.what() << "; using local completion\n";
-                    if (!completion) {
+                    if (candidates.empty()) {
                         return 2;
                     }
                 }
             }
-            if (completion) {
-                std::cout << *completion << '\n';
+            if (json) {
+                auto output = nlohmann::json::array();
+                for (const auto &command : candidates) {
+                    output.push_back({{"command", command}, {"risk", proto::assess_command(command).json()}});
+                }
+                std::cout << output.dump() << '\n';
+            } else {
+                for (const auto &command : candidates) {
+                    std::cout << command << '\n';
+                }
             }
             return 0;
         }

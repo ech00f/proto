@@ -115,6 +115,7 @@ Config Config::from_environment() {
     config.debounce = std::chrono::milliseconds(number("PROTO_DEBOUNCE_MS", 250, 0, 5000));
     config.timeout = std::chrono::milliseconds(number("PROTO_TIMEOUT_MS", 5000, 100, 30000));
     config.max_entries = static_cast<std::size_t>(number("PROTO_MAX_ENTRIES", 80, 1, 200));
+    config.suggestion_count = static_cast<std::size_t>(number("PROTO_SUGGESTIONS", 3, 1, 5));
     config.persist_history = !boolean("PROTO_NO_HISTORY", false);
     config.send_history = boolean("PROTO_SEND_HISTORY", false);
     const auto scope = environment("PROTO_CONTEXT", "home");

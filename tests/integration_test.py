@@ -226,6 +226,15 @@ class IntegrationTests(unittest.TestCase):
         self.assertNotIn("recent_commands", request["context"])
         self.assertNotIn("FILE_CONTENT_MUST_NOT_LEAVE", json.dumps(request))
 
+    def test_alternative_suggestions_and_risk_labels(self):
+        self.response = lambda _context: json.dumps({"completions": ["git status", "git stash", "git status", "rm -rf /"]})
+        result = self.run_cli("--suggest-json", "git st")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        candidates = json.loads(result.stdout)
+        self.assertEqual([item["command"] for item in candidates], ["git status", "git stash"])
+        self.assertEqual(candidates[0]["risk"]["level"], "none")
+        self.assertEqual(self.requests[0]["context"]["suggestion_count"], 3)
+
     def test_context_preview_does_not_call_api(self):
         result = self.run_cli("--context")
         self.assertEqual(result.returncode, 0, result.stderr)

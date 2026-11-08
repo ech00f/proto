@@ -66,17 +66,32 @@ std::string escape_suffix(std::string_view suffix, char quote) {
 std::optional<std::string> complete_local(std::string_view prefix, const std::filesystem::path &cwd,
                                           const std::filesystem::path &home,
                                           const std::vector<std::string> &history) {
+    const auto candidates = complete_locals(prefix, cwd, home, history, 1);
+    return candidates.empty() ? std::nullopt : std::optional<std::string>{candidates.front()};
+}
+
+std::vector<std::string> complete_locals(std::string_view prefix, const std::filesystem::path &cwd,
+                                        const std::filesystem::path &home,
+                                        const std::vector<std::string> &history, std::size_t limit) {
+    std::vector<std::string> result;
+    const auto add = [&](std::string command) {
+        if (command.size() > prefix.size() && command.size() <= max_command_bytes &&
+            printable_utf8(command) && result.size() < limit &&
+            std::find(result.begin(), result.end(), command) == result.end()) {
+            result.push_back(std::move(command));
+        }
+    };
     if (prefix.empty() || prefix.size() > max_command_bytes || !printable_utf8(prefix)) {
-        return std::nullopt;
+        return result;
     }
     for (auto it = history.rbegin(); it != history.rend(); ++it) {
         if (it->size() > prefix.size() && it->starts_with(prefix)) {
-            return *it;
+            add(*it);
         }
     }
     const auto word = last_word(prefix);
     if (word.escaped || word.value.find_first_of("$`") != std::string::npos) {
-        return std::nullopt;
+        return result;
     }
     if (word.start == 0 && word.value.find('/') == std::string::npos) {
         static constexpr auto commands = std::to_array<std::string_view>(
@@ -84,10 +99,10 @@ std::optional<std::string> complete_local(std::string_view prefix, const std::fi
              "python3", "ssh", "tar", "touch", "wc"});
         for (const auto command : commands) {
             if (command.starts_with(word.value) && command.size() > word.value.size()) {
-                return std::string(prefix) + std::string(command.substr(word.value.size()));
+                add(std::string(prefix) + std::string(command.substr(word.value.size())));
             }
         }
-        return std::nullopt;
+        return result;
     }
     const auto slash = word.value.find_last_of('/');
     const auto stem = slash == word.value.npos ? word.value : word.value.substr(slash + 1);
@@ -126,11 +141,11 @@ std::optional<std::string> complete_local(std::string_view prefix, const std::fi
                 completion += word.quote;
             }
             if (completion.size() <= max_command_bytes) {
-                return completion;
+                add(std::move(completion));
             }
         }
     }
-    return std::nullopt;
+    return result;
 }
 
 } // namespace proto
