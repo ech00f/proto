@@ -282,6 +282,7 @@ class ShellTests(unittest.TestCase):
         self.assert_menu_application_arrows("zsh")
 
     def test_zsh_history_search_arrows_keep_the_original_prefix(self):
+        self.environment["PROTO_AI"] = "1"
         setup = ("autoload -Uz up-line-or-beginning-search down-line-or-beginning-search; "
                  "zle -N up-line-or-beginning-search; zle -N down-line-or-beginning-search; "
                  "bindkey '^[[A' up-line-or-beginning-search; "
@@ -289,10 +290,12 @@ class ShellTests(unittest.TestCase):
                  "bindkey '^[OA' up-line-or-beginning-search; "
                  "bindkey '^[OB' down-line-or-beginning-search; ")
         terminal = self.shell("zsh", setup=setup)
-        terminal.send("print -s -- 'printf history-first'; print -s -- 'printf history-second'\r")
+        terminal.send("fc -p; HISTSIZE=20; print -s -- 'printf history-first'; "
+                      "print -s -- 'printf history-second'; print -r -- PROTO_HISTORY_''READY\r")
+        terminal.read_until(b"PROTO_HISTORY_READY")
         terminal.prompt(b"shell $ ")
         terminal.send("printf history-\x1b[A")
-        terminal.read_until(b"history-second")
+        terminal.read_until(b"second")
         terminal.pump(0.25)
         terminal.send("\x1bOA")
         terminal.read_until(b"first")
@@ -301,6 +304,7 @@ class ShellTests(unittest.TestCase):
         terminal.read_until(b"second")
         terminal.send("\x1bOB")
         terminal.pump(0.1)
+        self.assertEqual(self.requests, [])
         terminal.send("draft > history-draft.txt\r")
         terminal.prompt(b"shell $ ")
         self.assertEqual((self.cwd / "history-draft.txt").read_text(), "history-draft")
@@ -318,7 +322,9 @@ class ShellTests(unittest.TestCase):
                  "{ " + bindings + "; } > before-bindings.txt; ")
         terminal = self.shell("zsh", setup=setup)
         terminal.send("{ " + bindings + "; } > after-bindings.txt; "
-                      "print -s -- 'printf browse-first'; print -s -- 'printf browse-second'\r")
+                      "fc -p; HISTSIZE=20; print -s -- 'printf browse-first'; "
+                      "print -s -- 'printf browse-second'; print -r -- PROTO_HISTORY_''READY\r")
+        terminal.read_until(b"PROTO_HISTORY_READY")
         terminal.prompt(b"shell $ ")
         self.assertEqual((self.cwd / "before-bindings.txt").read_text(),
                          (self.cwd / "after-bindings.txt").read_text())

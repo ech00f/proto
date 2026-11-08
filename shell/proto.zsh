@@ -196,7 +196,8 @@ _proto_zsh_observe() {
         _proto_zsh_prefix=$BUFFER
         _proto_zsh_cursor=$CURSOR
         _proto_zsh_cwd=$PWD
-        if (( !_proto_zsh_suppressed && CURSOR == ${#BUFFER} && ${#BUFFER} > 0 &&
+        if (( PENDING == 0 && KEYS_QUEUED_COUNT == 0 && !_proto_zsh_suppressed &&
+              CURSOR == ${#BUFFER} && ${#BUFFER} > 0 &&
               ${#BUFFER} <= 4096 && ${#candidates} == 0 )) && [[ $BUFFER != '??'* ]]; then
             _proto_zsh_schedule
         fi
