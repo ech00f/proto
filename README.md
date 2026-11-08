@@ -11,7 +11,7 @@ Native Bash/Zsh · inline alternatives · reviewed command plans · settings & h
 
 [English](README.md) · [Русский](README.ru.md)
 
-[Features](#features) · [Preview](#preview) · [Build](#build) · [Run](#run) · [Settings](#configuration) · [Plans](#reviewed-multi-command-plans) · [FAQ](#faq)
+[Features](#features) · [Preview](#preview) · [Build](#build) · [Run](#run) · [Autostart](#autostart) · [Settings](#configuration) · [Plans](#reviewed-multi-command-plans) · [FAQ](#faq)
 
 </div>
 
@@ -22,6 +22,7 @@ Native Bash/Zsh · inline alternatives · reviewed command plans · settings & h
 | ⚡ **Local first, asynchronous AI**<br>Paths and common/history suggestions appear without waiting for inference. Requests are debounced; stale replies are discarded. | 🧭 **Your shell stays your shell**<br>Opt-in Bash/Zsh integration keeps your prompt, aliases, functions, directory state, and job control. |
 | 🎛️ **More than one suggestion**<br>Cycle alternatives, accept a whole command or one word, and keep typing without accidental execution. | 🪟 **A control center, one key away**<br>F2 opens settings, searchable history, outbound-context preview, and a key reference. |
 | 🛡️ **Review before running**<br>Risk labels flag deletion, overwrites, and elevated privileges. Plans wait for a full review and typed `RUN`. | 🔒 **Bounded metadata, not file uploads**<br>Local Ollama by default, configurable context, opt-in history sharing, and best-effort credential filtering. |
+| 🔁 **Ready when your computer starts**<br>An optional systemd user service handles AI requests; explicitly installed shell hooks load in each new terminal. | 🔌 **Your backend, not a mandatory dependency**<br>Use Ollama, LM Studio, or a compatible HTTPS API. The daemon starts without a model server and receives settings from your session. |
 
 > [!IMPORTANT]
 > **Tab accepts text. Enter runs only your actual input.**
@@ -141,7 +142,9 @@ source `"$HOME/.local/share/proto/proto.bash"` or `proto.zsh` instead.
 On macOS, the system Bash 3.2 is too old: launch
 `"$(brew --prefix bash)/bin/bash"` first, or use Zsh.
 
-Integration is opt-in and never edits `.bashrc` or `.zshrc`. `proto-disable`
+Sourcing integration is opt-in and never edits `.bashrc` or `.zshrc`. The
+[autostart installer](#autostart) can add a startup block only with an explicit
+`--shell` flag. `proto-disable`
 restores the hooks and bindings it replaced, keeping later user binding changes.
 `proto-enable` enables it again.
 
@@ -209,8 +212,69 @@ remote providers require HTTPS. Redirects are not followed.
 
 `--complete` prints a complete command, not just its suffix, and **never executes it**.
 No suggestion means empty stdout. Exit codes: `0` success/no suggestion, `1` invalid
-arguments/configuration, `2` an AI failure with no local fallback. Interactive mode
-requires a TTY and exits with the requested `exit` status or the last command's status.
+arguments/configuration, `2` an AI failure with no local fallback. `--daemon-status`
+returns `3` when no daemon is running. Interactive mode requires a TTY and exits
+with the requested `exit` status or the last command's status.
+
+<a id="autostart"></a>
+## Autostart · Linux / systemd
+
+Install once; the daemon starts automatically and every new terminal loads proto:
+
+```sh
+python3 scripts/install.py --build-dir build --systemd --shell zsh
+```
+
+Use `--shell bash` or `--shell both` instead if needed. The installer uses
+`~/.local` by default (`--prefix` overrides it), installs `proto.service` in your
+user systemd configuration, and adds only a marked block to the selected shell
+startup file. It respects Zsh's `ZDOTDIR`, is idempotent, preserves surrounding
+settings, and refuses to overwrite edited installed files or linked startup
+files. A systemd installation prefix cannot contain quotes, backslashes, or
+control characters. Without `--shell` / `--systemd`, it only installs the program.
+Existing terminals are unchanged: open a new one to load integration.
+
+For startup **at boot, even before login**, explicitly enable user lingering:
+
+```sh
+python3 scripts/install.py --build-dir build --systemd --shell zsh --linger
+```
+
+Lingering keeps the user manager running after logout and may need administrator
+approval. Without it, the enabled service starts when your user manager starts,
+normally at login. No system-wide service or automatic `sudo` is used.
+
+```sh
+systemctl --user status proto.service
+~/.local/bin/proto --daemon-status
+journalctl --user -u proto.service -b
+```
+
+The service runs **proto itself**, not an interactive prompt or Ollama. It
+forwards AI requests from Bash/Zsh and standalone sessions to their configured
+OpenAI-compatible endpoint. Model, endpoint, timeout, and API key come from each
+session; saving menu settings needs no daemon restart. Ollama is optional; if
+you choose a local model server, arrange its own startup separately. A ready
+daemon does not mean a model is available.
+
+The daemon listens only on `$XDG_RUNTIME_DIR/proto/proto.sock`: directory `0700`,
+socket `0600`, same-user checks on both ends. Requests use already-filtered
+metadata; the daemon does not scan your directories, load shell history, save
+keys, or execute commands. At most eight requests run concurrently; disconnects
+cancel pending work. Plan review and danger confirmation remain in your terminal.
+Other processes running as your user share this trust boundary.
+
+If the daemon is absent, clients use the configured API directly; failed daemon
+requests are not retried against the API, preventing duplicate calls. Local
+suggestions remain available. `PROTO_DAEMON=0` always uses direct requests;
+`PROTO_DAEMON_SOCKET` overrides the socket path. Manual `proto --daemon` with a
+configured private socket also works on macOS; systemd installation is Linux-only.
+
+To disable autostart without deleting installed files or other shell settings:
+
+```sh
+python3 scripts/install.py --remove-shell zsh --disable-service
+```
 
 ## Configuration
 
@@ -249,6 +313,8 @@ or shell startup files.
 | `PROTO_NO_HISTORY` | `0` | `1` disables proto disk history; native shell history is unaffected |
 | `PROTO_THEME` | `aurora` | Menu theme: `aurora` or `midnight` |
 | `PROTO_SHELL` | `$SHELL` or `/bin/sh` | Standalone execution shell; integrations use their current Bash/Zsh |
+| `PROTO_DAEMON` | `1` | Use the user daemon when available; `0` sends requests directly |
+| `PROTO_DAEMON_SOCKET` | `$XDG_RUNTIME_DIR/proto/proto.sock` | Optional private Unix-socket path; no automatic daemon connection when the runtime directory is unset |
 
 Boolean settings accept `0`/`1` or `false`/`true`.
 
@@ -363,6 +429,9 @@ remote model calls, or user-home contents are required. Coverage includes native
 Bash, Bash fallback, Zsh widgets, stale replies, privacy, plans, settings,
 binding restoration, and terminal cleanup. Missing optional shells/modules are
 reported as skipped tests, not as tested integrations.
+Daemon and installer tests cover cancellation, concurrency, private sockets,
+startup blocks, and preservation of user changes without starting real services
+or changing shell startup files.
 
 ```sh
 cmake -S . -B build-sanitize -G Ninja -DCMAKE_BUILD_TYPE=Debug \

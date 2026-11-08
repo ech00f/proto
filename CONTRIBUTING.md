@@ -27,6 +27,7 @@ Optional integrations that are unavailable are reported as skipped tests.
 - `src/settings.cpp`: private saved settings and non-secret configuration data.
 - `src/context.cpp`, `src/text.cpp`: metadata collection, filtering, and UTF-8 utilities.
 - `src/api_client.cpp`: bounded, cancellable OpenAI-compatible HTTP requests.
+- `src/daemon.cpp`: same-user Unix-socket requests, bounded workers, and disconnect cancellation.
 - `src/completion_service.cpp`: background requests, debounce, and generation tracking.
 - `src/local_completion.cpp`, `src/history.cpp`: offline suggestions and private local history.
 - `src/editor.cpp`: input decoding, line editing, and inline terminal rendering.
@@ -37,6 +38,8 @@ Optional integrations that are unavailable are reported as skipped tests.
 - `tests/unit_tests.cpp`: C++ unit/regression checks (also active in Release builds).
 - `tests/integration_test.py`: fake HTTP server and real PTY integration tests.
 - `tests/shell_integration_test.py`, `tests/terminal_process.py`: native-shell regressions and shared PTY helpers.
+- `tests/daemon_test.py`, `tests/install_test.py`: private daemon protocols and opt-in startup installation.
+- `scripts/install.py`, `systemd/proto.service.in`: user-local installation and optional systemd autostart.
 
 ## Safety invariants
 
@@ -47,4 +50,8 @@ Changes to outbound context must remain inspectable with `--context` and configu
 with `PROTO_CONTEXT`. API keys and personal history must not enter the repository.
 Plans and dangerous commands require explicit approval. Plan steps share a
 subshell, stop on failure, and do not change parent-shell state. Never rewrite a
-user's shell startup files or discard bindings they changed after enabling proto.
+user's shell startup files implicitly or discard bindings they changed after enabling proto.
+The installer may add/remove only its marked startup block after an explicit
+`--shell` / `--remove-shell` request. Never overwrite changed installed files.
+Daemon RPC must not execute commands, scan directories, log keys/context, or
+accept other users; review and approvals belong in the client terminal.
