@@ -1,7 +1,17 @@
 # proto
 
-AI-powered command autocomplete, written in C++20. Uses an OpenAI-compatible
-chat-completions API; defaults to a local Ollama model.
+Copilot-style inline command autocomplete, written in C++20 for Linux and macOS.
+Suggestions appear as gray ghost text while you type; the model never executes
+anything. Uses an OpenAI-compatible API and defaults to a local Ollama model.
+
+```text
+proto ~/project $ git st│atus --short
+                       └─ gray suggestion: Tab accepts, Enter executes your input
+```
+
+Network requests run on a background thread, are debounced, and are cancelled
+when you edit the line. Stale replies cannot overwrite newer input. Local path,
+common-command, and proto-history completions still work when the AI is unavailable.
 
 ## Build
 
@@ -14,11 +24,14 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-## Completion API
+## Run
 
 ```sh
 ollama pull qwen2.5-coder:7b
 # Start `ollama serve` if the Ollama service is not already running.
+./build/proto
+
+# Non-interactive completion / metadata inspection:
 ./build/proto --complete 'git st'
 ./build/proto --no-ai --complete 'cd ~/Doc'
 ./build/proto --context
@@ -34,3 +47,28 @@ secret/recovery files are excluded. `PROTO_CONTEXT=none` disables directory cont
 sent only with `PROTO_SEND_HISTORY=1`; existing bash/zsh history is never imported.
 
 `--complete` only prints a suggestion. It never executes a command.
+
+## Keys and commands
+
+| Key | Action |
+| --- | --- |
+| Tab / Right at end of input | Accept the full suggestion |
+| Ctrl+Right / Alt+Right | Accept the next word |
+| Enter | Execute the input, **without** accepting ghost text |
+| Esc | Dismiss the suggestion until the next edit |
+| Up / Down | Browse proto's own history |
+| Left / Right, Home / End | Move the cursor |
+| Ctrl+A / Ctrl+E | Start / end of line |
+| Ctrl+U / Ctrl+K / Ctrl+W | Delete before cursor / after cursor / previous word |
+| Ctrl+C | Cancel input or interrupt a running foreground command |
+| Ctrl+D | Exit an empty prompt |
+| Ctrl+L | Clear the screen |
+
+UTF-8 text, wide characters, window resizing, and bracketed paste are supported.
+Newlines in bracketed paste become spaces; pasting never submits the line.
+
+Commands run through `$SHELL -c` (override with `PROTO_SHELL`). Simple `cd`, `cd -`,
+`exit [status]`, `jobs`, and `fg [id]` are handled by proto. Ctrl+Z stops a foreground
+command; `fg` resumes it. This is a small terminal wrapper, not a full bash/zsh
+replacement: shell aliases/functions and complex `cd ... && ...` expressions run
+in child shells and do not change proto's own state.

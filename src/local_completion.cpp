@@ -91,7 +91,8 @@ std::optional<std::string> complete_local(std::string_view prefix, const std::fi
     }
     const auto slash = word.value.find_last_of('/');
     const auto stem = slash == word.value.npos ? word.value : word.value.substr(slash + 1);
-    const auto directory = slash == word.value.npos ? std::string{} : word.value.substr(0, slash + 1);
+    const auto directory =
+        slash == word.value.npos ? std::string{} : word.value.substr(0, slash + 1);
     std::filesystem::path lookup = directory;
     if (directory == "~/" || directory.starts_with("~/")) {
         lookup = home / directory.substr(2);
@@ -119,7 +120,8 @@ std::optional<std::string> complete_local(std::string_view prefix, const std::fi
     std::sort(candidates.begin(), candidates.end());
     for (const auto &candidate : candidates) {
         if (candidate.size() > stem.size()) {
-            auto completion = std::string(prefix) + escape_suffix(candidate.substr(stem.size()), word.quote);
+            auto completion =
+                std::string(prefix) + escape_suffix(candidate.substr(stem.size()), word.quote);
             if (word.quote != 0) {
                 completion += word.quote;
             }

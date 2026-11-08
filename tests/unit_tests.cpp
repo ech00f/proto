@@ -1,6 +1,7 @@
 #include "proto/api_client.hpp"
 #include "proto/config.hpp"
 #include "proto/context.hpp"
+#include "proto/editor.hpp"
 #include "proto/history.hpp"
 #include "proto/local_completion.hpp"
 #include "proto/text.hpp"
@@ -83,8 +84,8 @@ void text_tests() {
 void config_tests() {
     Fixture fixture;
     fixture.config.validate();
-    for (const auto *url : {"https://api.openai.com/v1", "http://localhost:11434/v1",
-                            "http://[::1]:11434/v1"}) {
+    for (const auto *url :
+         {"https://api.openai.com/v1", "http://localhost:11434/v1", "http://[::1]:11434/v1"}) {
         fixture.config.api_base = url;
         fixture.config.validate();
     }
@@ -124,16 +125,18 @@ void context_tests() {
           "Private directory exposed");
     fixture.config.context_scope = proto::ContextScope::None;
     const auto minimal = proto::build_context(fixture.config, "git st", cwd);
-    check(!minimal.contains("cwd") && !minimal.contains("home_directories"), "Context not disabled");
+    check(!minimal.contains("cwd") && !minimal.contains("home_directories"),
+          "Context not disabled");
     fixture.config.send_history = true;
-    const auto history_context = proto::build_context(fixture.config, "git st", cwd,
-                                                       {"echo password=bad", "git status"});
+    const auto history_context =
+        proto::build_context(fixture.config, "git st", cwd, {"echo password=bad", "git status"});
     check(history_context.at("recent_commands") == nlohmann::json::array({"git status"}),
           "Secret history sent");
 }
 
 void completion_tests() {
-    check(proto::normalize_completion("git st", "git status\n") == "git status", "Valid completion");
+    check(proto::normalize_completion("git st", "git status\n") == "git status",
+          "Valid completion");
     check(!proto::normalize_completion("git st", "git stash\nrm -rf /"), "Multiline completion");
     check(!proto::normalize_completion("git st", "git status\x1b[2J"), "Escape in completion");
     check(!proto::normalize_completion("git st", "status"), "Prefix was replaced");
@@ -143,7 +146,8 @@ void completion_tests() {
     std::filesystem::create_directory(fixture.config.home / "Documents");
     std::ofstream(fixture.config.home / "my file.txt") << "test";
     std::ofstream(fixture.config.home / "Bob's.txt") << "test";
-    check(proto::complete_local("cd Doc", fixture.config.home, fixture.config.home) == "cd Documents/",
+    check(proto::complete_local("cd Doc", fixture.config.home, fixture.config.home) ==
+              "cd Documents/",
           "Directory completion");
     check(proto::complete_local("cat my", fixture.config.home, fixture.config.home) ==
               "cat my\\ file.txt",
@@ -175,8 +179,9 @@ void history_tests() {
         check(history.warning().empty(), "History write failed");
     }
     const auto path = fixture.config.state_directory / "proto/history";
-    struct stat status {};
-    check(::stat(path.c_str(), &status) == 0 && (status.st_mode & 0777) == 0600, "History permissions");
+    struct stat status{};
+    check(::stat(path.c_str(), &status) == 0 && (status.st_mode & 0777) == 0600,
+          "History permissions");
     check(proto::History(fixture.config).entries() == std::vector<std::string>{"git status"},
           "History persistence");
     const auto victim = fixture.root / "victim";
@@ -196,6 +201,62 @@ void history_tests() {
     check(memory.entries() == std::vector<std::string>{"pwd"}, "In-memory history unavailable");
 }
 
+void editor_tests() {
+    proto::LineBuffer line;
+    check(line.insert("a界b"), "UTF-8 insertion");
+    line.left();
+    line.backspace();
+    check(line.text() == "ab" && line.cursor() == 1, "UTF-8 backspace");
+    line.home();
+    line.erase_next();
+    check(line.text() == "b", "Delete at cursor");
+    line.replace("git ");
+    check(line.accept("git status --short", true) && line.text() == "git status ",
+          "Accept one word");
+    check(line.accept("git status --short") && line.text() == "git status --short",
+          "Accept suffix");
+    line.home();
+    check(!line.accept("git status --short --branch"), "Accepting in middle of input");
+    line.end();
+    line.kill_word();
+    check(line.text() == "git status ", "Kill previous word");
+    line.replace("git st");
+    const auto frame = proto::make_frame("p> ", line, "git status", 30);
+    check(frame.text == "git st" && frame.ghost == "atus", "Ghost suffix rendering");
+    line.left();
+    check(proto::make_frame("p> ", line, "git status", 30).ghost.empty(),
+          "Ghost visible at midline");
+    line.replace("echo очень-длинная-строка");
+    for (const int columns : {1, 2, 8, 12, 30}) {
+        const auto narrow =
+            proto::make_frame("proto ~/project $ ", line, line.text() + " suffix", columns);
+        check(proto::display_width(narrow.prompt + narrow.text + narrow.ghost) <= columns - 1,
+              "Frame wraps beyond terminal width");
+        check(narrow.cursor_column < columns, "Cursor outside terminal width");
+        check(proto::printable_utf8(narrow.text), "Frame splits UTF-8");
+    }
+    proto::InputDecoder decoder;
+    check(decoder.feed("\x1b[").empty(), "Partial escape emitted text");
+    const auto arrow = decoder.feed("D");
+    check(arrow.size() == 1 && arrow[0].key == proto::Key::Left, "Split arrow sequence");
+    check(decoder.feed("\xd0").empty(), "Partial UTF-8 emitted text");
+    const auto unicode = decoder.feed("\x94");
+    check(unicode.size() == 1 && unicode[0].text == "Д", "Split UTF-8 input");
+    const auto paste = decoder.feed("\x1b[200~echo first\nsecond\r\n\x1b[201~");
+    std::string pasted;
+    for (const auto &event : paste) {
+        check(event.key != proto::Key::Enter, "Multiline paste executes commands");
+        if (event.key == proto::Key::Text) {
+            pasted += event.text;
+        }
+    }
+    check(pasted == "echo first second  ", "Paste newline sanitation");
+    const auto enter = decoder.feed("\r");
+    check(enter.size() == 1 && enter[0].key == proto::Key::Enter, "Enter after paste");
+    decoder.feed("\x1b");
+    check(decoder.flush_escape()[0].key == proto::Key::Escape, "Standalone escape");
+}
+
 } // namespace
 
 int main() {
@@ -203,7 +264,7 @@ int main() {
     const std::pair<const char *, std::function<void()>> tests[]{
         {"text / privacy", text_tests}, {"configuration", config_tests},
         {"context", context_tests},     {"completion", completion_tests},
-        {"history", history_tests}};
+        {"history", history_tests},     {"terminal editor", editor_tests}};
     int failures = 0;
     for (const auto &[name, action] : tests) {
         try {

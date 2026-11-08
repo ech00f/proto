@@ -96,10 +96,10 @@ bool printable_utf8(std::string_view text) {
 
 bool looks_sensitive(std::string_view text) {
     const auto lowered = lowercase(text);
-    static constexpr auto markers = std::to_array<std::string_view>({
-        "password", "passwd", "secret", "token", "api_key", "api-key", "apikey",
-        "authorization", "private_key", "private-key", "access_key", "access-key", "sk-", "ghp_",
-        "github_pat_", "-----begin", "eyj"});
+    static constexpr auto markers = std::to_array<std::string_view>(
+        {"password", "passwd", "secret", "token", "api_key", "api-key", "apikey", "authorization",
+         "private_key", "private-key", "access_key", "access-key", "sk-", "ghp_", "github_pat_",
+         "-----begin", "eyj"});
     return contains_any(lowered, markers);
 }
 
@@ -108,9 +108,9 @@ bool private_name(std::string_view name) {
         return true;
     }
     const auto lowered = lowercase(name);
-    static constexpr auto markers = std::to_array<std::string_view>(
-        {"credential", "recovery", "wallet", "seed", ".pem", ".key", ".p12", ".pfx", "id_rsa",
-         "id_ed25519"});
+    static constexpr auto markers =
+        std::to_array<std::string_view>({"credential", "recovery", "wallet", "seed", ".pem", ".key",
+                                         ".p12", ".pfx", "id_rsa", "id_ed25519"});
     return contains_any(lowered, markers);
 }
 

@@ -74,7 +74,8 @@ std::unique_ptr<CURLU, decltype(&curl_url_cleanup)> parse_url(const std::string 
         !url_part(url.get(), CURLUPART_PASSWORD).empty() ||
         !url_part(url.get(), CURLUPART_QUERY).empty() ||
         !url_part(url.get(), CURLUPART_FRAGMENT).empty()) {
-        throw std::runtime_error("PROTO_API_BASE cannot contain credentials, a query, or a fragment");
+        throw std::runtime_error(
+            "PROTO_API_BASE cannot contain credentials, a query, or a fragment");
     }
     const auto scheme = url_part(url.get(), CURLUPART_SCHEME);
     const auto host = url_part(url.get(), CURLUPART_HOST);

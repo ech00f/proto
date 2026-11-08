@@ -56,7 +56,7 @@ void History::load() {
         }
         return;
     }
-    struct stat status {};
+    struct stat status{};
     if (!owned_regular_file(file.get(), status) || (status.st_mode & 0077) != 0) {
         warning_ = "Ignoring unsafe or oversized proto history (owner-only regular file required)";
         return;
@@ -94,7 +94,8 @@ void History::load() {
         start = end + 1;
     }
     if (entries_.size() > max_history_entries) {
-        entries_.erase(entries_.begin(), entries_.end() - static_cast<std::ptrdiff_t>(max_history_entries));
+        entries_.erase(entries_.begin(),
+                       entries_.end() - static_cast<std::ptrdiff_t>(max_history_entries));
     }
 }
 
@@ -124,12 +125,11 @@ void History::persist(std::string_view command) {
         warning_ = "Could not create private proto history directory";
         return;
     }
-    const File file(::open(path_.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC | O_NOFOLLOW |
-                                            O_NONBLOCK,
-                           0600));
-    struct stat status {};
-    if (file.get() < 0 || !owned_regular_file(file.get(), status) || ::fchmod(file.get(), 0600) != 0 ||
-        ::flock(file.get(), LOCK_EX) != 0) {
+    const File file(::open(
+        path_.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK, 0600));
+    struct stat status{};
+    if (file.get() < 0 || !owned_regular_file(file.get(), status) ||
+        ::fchmod(file.get(), 0600) != 0 || ::flock(file.get(), LOCK_EX) != 0) {
         warning_ = "Could not safely save proto history";
         return;
     }
