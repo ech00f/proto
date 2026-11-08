@@ -236,6 +236,21 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(candidates[0]["risk"]["level"], "none")
         self.assertEqual(self.requests[0]["context"]["suggestion_count"], 3)
 
+    def test_plan_preview_never_executes(self):
+        self.response = lambda _context: json.dumps({"title": "Create two files", "steps": [
+            {"command": "printf one > one.txt"}, {"command": "printf two > two.txt"}]})
+        result = self.run_cli("--plan", "create two files")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(json.loads(result.stdout)["steps"]), 2)
+        self.assertEqual(self.requests[0]["context"]["task"], "create two files")
+        self.assertFalse((self.cwd / "one.txt").exists())
+        self.assertFalse((self.cwd / "two.txt").exists())
+
+    def test_secret_task_is_not_sent(self):
+        result = self.run_cli("--plan", "use password=do-not-send")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.requests, [])
+
     def test_context_preview_does_not_call_api(self):
         result = self.run_cli("--context")
         self.assertEqual(result.returncode, 0, result.stderr)

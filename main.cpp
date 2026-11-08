@@ -4,6 +4,7 @@
 #include "proto/editor.hpp"
 #include "proto/history.hpp"
 #include "proto/local_completion.hpp"
+#include "proto/plan.hpp"
 #include "proto/safety.hpp"
 #include "proto/shell.hpp"
 #include "proto/signals.hpp"
@@ -27,6 +28,7 @@ Usage: proto [--no-ai]
   --complete PREFIX   Print a complete command without executing it
   --suggest PREFIX    Print alternative commands, one per line
   --suggest-json TEXT Print alternatives with risk labels as JSON
+  --plan TASK         Preview an AI multi-command plan as JSON; never execute it
   --context           Preview the exact directory/history context sent to the model
   --no-ai             Use only local path and proto-history completions
 
@@ -51,6 +53,7 @@ int main(int argc, char **argv) {
         bool alternatives = false;
         bool json = false;
         std::optional<std::string> prefix;
+        std::optional<std::string> task;
         for (int index = 1; index < argc; ++index) {
             const std::string argument = argv[index];
             if (argument == "--help" || argument == "-h") {
@@ -63,14 +66,16 @@ int main(int argc, char **argv) {
             }
             if (argument == "--no-ai") {
                 no_ai = true;
-            } else if (argument == "--context" && !preview && !prefix) {
+            } else if (argument == "--context" && !preview && !prefix && !task) {
                 preview = true;
             } else if ((argument == "--complete" || argument == "--suggest" ||
                         argument == "--suggest-json") &&
-                       !preview && !prefix && index + 1 < argc) {
+                       !preview && !prefix && !task && index + 1 < argc) {
                 prefix = argv[++index];
                 alternatives = argument != "--complete";
                 json = argument == "--suggest-json";
+            } else if (argument == "--plan" && !preview && !prefix && !task && index + 1 < argc) {
+                task = argv[++index];
             } else {
                 throw std::runtime_error("Unknown or conflicting argument; run proto --help");
             }
@@ -80,6 +85,10 @@ int main(int argc, char **argv) {
         config.validate();
         proto::History history(config);
         const auto cwd = std::filesystem::current_path();
+        if (task) {
+            std::cout << proto::generate_plan(config, *task, cwd, history.entries()).json().dump(2) << '\n';
+            return 0;
+        }
         if (preview) {
             std::cout << proto::build_context(config, "", cwd, history.entries()).dump(2) << '\n';
             return 0;

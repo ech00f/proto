@@ -23,6 +23,7 @@ add_library(proto_core
     src/context.cpp
     src/history.cpp
     src/local_completion.cpp
+    src/plan.cpp
     src/safety.cpp
     src/settings.cpp
     src/text.cpp

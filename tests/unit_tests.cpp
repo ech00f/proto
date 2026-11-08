@@ -4,6 +4,7 @@
 #include "proto/editor.hpp"
 #include "proto/history.hpp"
 #include "proto/local_completion.hpp"
+#include "proto/plan.hpp"
 #include "proto/safety.hpp"
 #include "proto/suggestions.hpp"
 #include "proto/text.hpp"
@@ -153,6 +154,18 @@ void settings_tests() {
     throws([&] { fixture.config.save(); }, "Symlink config overwritten");
     throws([&] { loaded.load_file(); }, "Symlink config read");
     check(std::filesystem::file_size(victim) == 9, "Config symlink victim changed");
+}
+
+void plan_tests() {
+    const auto plan = proto::parse_plan(R"({"title":"Prepare project","steps":[{"command":"mkdir demo"},{"command":"cd demo"},{"command":"git init"}]})");
+    check(plan.steps.size() == 3 && plan.risk() == proto::RiskLevel::None, "Plan parsing");
+    check(proto::plan_script(plan).starts_with("set -e\n"), "Plans do not stop on failure");
+    const auto dangerous = proto::parse_plan(R"({"title":"Delete","steps":[{"command":"rm -rf old","risk":"none"}]})");
+    check(dangerous.risk() == proto::RiskLevel::Danger, "Trusted model risk claim");
+    for (const auto invalid : {R"({"title":"Empty","steps":[]})", R"({"title":"Bad","steps":[{"command":"echo ok\nrm file"}]})",
+                               R"({"title":"Bad","steps":[{"command":"# ignore"}]})", "not JSON"}) {
+        throws([&] { proto::parse_plan(invalid); }, "Invalid plan accepted");
+    }
 }
 
 void context_tests() {
@@ -369,6 +382,7 @@ int main() {
     const std::pair<const char *, std::function<void()>> tests[]{
         {"text / privacy", text_tests},    {"command safety", safety_tests},
         {"configuration", config_tests}, {"saved settings", settings_tests},  {"context", context_tests},
+        {"AI plans", plan_tests},
         {"completion", completion_tests},  {"history", history_tests},
         {"terminal editor", editor_tests}, {"history safety", history_safety_tests}};
     int failures = 0;
