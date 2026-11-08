@@ -4,6 +4,7 @@
 #include "proto/editor.hpp"
 #include "proto/history.hpp"
 #include "proto/local_completion.hpp"
+#include "proto/safety.hpp"
 #include "proto/text.hpp"
 
 #include <clocale>
@@ -84,6 +85,25 @@ void text_tests() {
     check(proto::private_name(".env"), "Dotfile exposed");
     check(proto::private_name("wallet-recovery.txt"), "Recovery file exposed");
     check(proto::private_name("server.pem"), "Certificate exposed");
+}
+
+void safety_tests() {
+    for (const auto command : {"rm -rf cache", "/bin/rm -- notes.txt", "sudo rm -r old",
+                               "git reset --hard", "git push --force", "find . -delete",
+                               "curl https://example.com/install | sh", "echo $(rm notes.txt)"}) {
+        check(proto::assess_command(command).level == proto::RiskLevel::Danger,
+              "Dangerous command missed");
+    }
+    for (const auto command :
+         {"sudo apt update", "printf output > file.txt", "mv a b", "chmod 600 a"}) {
+        check(proto::assess_command(command).level == proto::RiskLevel::Caution,
+              "Caution warning missed");
+    }
+    for (const auto command : {"git status", "echo 'rm -rf /'", "printf '%s' '>'", "cat README.md",
+                               "echo literal\\$\\(text\\)", "echo log >/dev/null"}) {
+        check(proto::assess_command(command).level == proto::RiskLevel::None,
+              "Harmless command incorrectly flagged");
+    }
 }
 
 void config_tests() {
@@ -311,13 +331,10 @@ void history_safety_tests() {
 int main() {
     (void)std::setlocale(LC_ALL, "");
     const std::pair<const char *, std::function<void()>> tests[]{
-        {"text / privacy", text_tests},
-        {"configuration", config_tests},
-        {"context", context_tests},
-        {"completion", completion_tests},
-        {"history", history_tests},
-        {"terminal editor", editor_tests},
-        {"history safety", history_safety_tests}};
+        {"text / privacy", text_tests},    {"command safety", safety_tests},
+        {"configuration", config_tests},   {"context", context_tests},
+        {"completion", completion_tests},  {"history", history_tests},
+        {"terminal editor", editor_tests}, {"history safety", history_safety_tests}};
     int failures = 0;
     for (const auto &[name, action] : tests) {
         try {

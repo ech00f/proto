@@ -23,6 +23,7 @@ add_library(proto_core
     src/context.cpp
     src/history.cpp
     src/local_completion.cpp
+    src/safety.cpp
     src/text.cpp
 )
 target_include_directories(proto_core PUBLIC include)
