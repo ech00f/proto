@@ -648,8 +648,8 @@ extern "C" void proto_bash_disable() {
         if (lookup(*it, type) == it->replacement && type == ISFUNC) {
             if (it->type == ISMACR) {
                 const auto sequence = it->sequence == std::string(1, '\0') ? "\\C-@" : it->sequence;
-                rl_generic_bind(ISMACR, sequence.c_str(), const_cast<char *>(it->macro.c_str()),
-                                it->map);
+                // Readline takes ownership of the restored macro.
+                rl_generic_bind(ISMACR, sequence.c_str(), ::strdup(it->macro.c_str()), it->map);
             } else {
                 bind(*it, it->original);
             }

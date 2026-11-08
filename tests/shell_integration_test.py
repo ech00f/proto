@@ -250,6 +250,21 @@ class ShellTests(unittest.TestCase):
         terminal.read_until(b"shell $ ", after=b"\n")
         self.assertEqual((self.cwd / "restored.txt").read_text(), "restored")
 
+    def test_bash_disable_keeps_later_bindings_and_restores_macros_after_reenable(self):
+        terminal = self.shell(setup="bind '\"\\C-i\": \"restored\"'; ")
+        terminal.send("bind '\"\\eOQ\": \"new-binding\"'; proto-disable; proto-enable; proto-disable\r")
+        terminal.read_until(b"shell $ ", after=b"\n")
+        terminal.send("printf '\t' > restored.txt; printf '\x1bOQ' > newer.txt\r")
+        terminal.read_until(b"shell $ ", after=b"\n")
+        self.assertEqual((self.cwd / "restored.txt").read_text(), "restored")
+        self.assertEqual((self.cwd / "newer.txt").read_text(), "new-binding")
+
+    def test_bash_custom_tab_fallback_when_there_is_no_suggestion(self):
+        terminal = self.shell(setup="bind '\"\\C-i\": \"restored\"'; ")
+        terminal.send("printf '\t' > fallback.txt\r")
+        terminal.read_until(b"shell $ ", after=b"\n")
+        self.assertEqual((self.cwd / "fallback.txt").read_text(), "restored")
+
     def test_bash_exit_restores_terminal(self):
         terminal = self.shell()
         terminal.send("exit\r")
