@@ -253,6 +253,108 @@ class ShellTests(unittest.TestCase):
     def test_zsh_menu_preserves_input(self):
         self.assert_menu_preserves_input("zsh")
 
+    def assert_menu_application_arrows(self, kind, native=True):
+        terminal = self.shell(kind, native=native)
+        terminal.send("printf menu-draft\x1bOQ")
+        terminal.read_until(b"YOUR TERMINAL")
+        terminal.send("2\x1bOB\x1bOB\r\x15changed-model\x1bOD\x1bOD\x1bOCX\rs")
+        terminal.read_until(b"Saved & applied")
+        settings = json.loads((self.home / "config/proto/config.json").read_text())
+        self.assertEqual(settings["model"], "changed-modeXl")
+        terminal.send("\x1bOA\r")
+        terminal.read_until(b"EDIT  /  Endpoint")
+        terminal.send("\x1b")
+        terminal.read_until(b"Alternatives")
+        terminal.send("\x1b")
+        terminal.read_until(b"\x1b[?1049l")
+        terminal.read_until(b"\x1b[?2004h")
+        terminal.read_until(b"printf menu-draft")
+        terminal.send("\x03")
+        terminal.read_until(b"\x1b[?2004h")
+
+    def test_bash_menu_application_arrows(self):
+        self.assert_menu_application_arrows("bash")
+
+    def test_bash_fallback_menu_application_arrows(self):
+        self.assert_menu_application_arrows("bash", native=False)
+
+    def test_zsh_menu_application_arrows(self):
+        self.assert_menu_application_arrows("zsh")
+
+    def test_zsh_history_search_arrows_keep_the_original_prefix(self):
+        setup = ("autoload -Uz up-line-or-beginning-search down-line-or-beginning-search; "
+                 "zle -N up-line-or-beginning-search; zle -N down-line-or-beginning-search; "
+                 "bindkey '^[[A' up-line-or-beginning-search; "
+                 "bindkey '^[[B' down-line-or-beginning-search; "
+                 "bindkey '^[OA' up-line-or-beginning-search; "
+                 "bindkey '^[OB' down-line-or-beginning-search; ")
+        terminal = self.shell("zsh", setup=setup)
+        terminal.send("print -s -- 'printf history-first'; print -s -- 'printf history-second'\r")
+        terminal.prompt(b"shell $ ")
+        terminal.send("printf history-\x1b[A")
+        terminal.read_until(b"history-second")
+        terminal.pump(0.25)
+        terminal.send("\x1bOA")
+        terminal.read_until(b"first")
+        terminal.pump(0.25)
+        terminal.send("\x1b[B")
+        terminal.read_until(b"second")
+        terminal.send("\x1bOB")
+        terminal.pump(0.1)
+        terminal.send("draft > history-draft.txt\r")
+        terminal.prompt(b"shell $ ")
+        self.assertEqual((self.cwd / "history-draft.txt").read_text(), "history-draft")
+
+    def test_zsh_custom_history_arrows_do_not_request_or_display_suggestions(self):
+        self.environment["PROTO_AI"] = "1"
+        self.response = lambda context: context["prefix"] + "-suggested"
+        bindings = ("for key in '^[[A' '^[[B' '^[OA' '^[OB'; do "
+                    "bindkey -L \"$key\"; done")
+        setup = ("native_previous() { zle .up-line-or-history; }; "
+                 "native_next() { zle .down-line-or-history; }; "
+                 "zle -N native-previous native_previous; zle -N native-next native_next; "
+                 "bindkey '^[[A' native-previous; bindkey '^[OA' native-previous; "
+                 "bindkey '^[[B' native-next; bindkey '^[OB' native-next; "
+                 "{ " + bindings + "; } > before-bindings.txt; ")
+        terminal = self.shell("zsh", setup=setup)
+        terminal.send("{ " + bindings + "; } > after-bindings.txt; "
+                      "print -s -- 'printf browse-first'; print -s -- 'printf browse-second'\r")
+        terminal.prompt(b"shell $ ")
+        self.assertEqual((self.cwd / "before-bindings.txt").read_text(),
+                         (self.cwd / "after-bindings.txt").read_text())
+        terminal.send("printf browse-draft")
+        terminal.read_until(b"-suggested")
+        requests = len(self.requests)
+        for arrow, expected in (("\x1bOA", b"second"), ("\x1b[A", b"first"), ("\x1bOB", b"second")):
+            terminal.send(arrow)
+            terminal.read_until(expected)
+            terminal.pump(0.25)
+            self.assertNotIn(b"-suggested", terminal.plain_output)
+            self.assertEqual(len(self.requests), requests)
+        terminal.send("\x1b[B")
+        terminal.pump(0.15)
+        self.assertNotIn(b"-suggested", terminal.plain_output)
+        self.assertEqual(len(self.requests), requests)
+        terminal.send("X")
+        terminal.read_until(b"-suggested")
+        self.assertEqual(self.requests[-1]["prefix"], "printf browse-draftX")
+        terminal.send("\x03")
+        terminal.read_until(b"\x1b[?2004h")
+
+    def test_zsh_async_replies_preserve_the_last_editing_widget(self):
+        self.environment["PROTO_AI"] = "1"
+        self.response = lambda context: context["prefix"] + "-suggested"
+        setup = ("capture_last_widget() { print -r -- \"$LASTWIDGET\" > last-widget.txt; }; "
+                 "zle -N native-capture capture_last_widget; bindkey '^X^L' native-capture; ")
+        terminal = self.shell("zsh", setup=setup)
+        terminal.send("printf last-widget")
+        terminal.read_until(b"-suggested")
+        terminal.send("\x18\x0c")
+        terminal.pump(0.1)
+        self.assertEqual((self.cwd / "last-widget.txt").read_text(), "self-insert\n")
+        terminal.send("\x03")
+        terminal.read_until(b"\x1b[?2004h")
+
     def test_bash_danger_requires_confirmation(self):
         self.assert_danger_requires_confirmation("bash")
 

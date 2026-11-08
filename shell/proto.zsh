@@ -22,6 +22,7 @@ typeset -gA _proto_zsh_originals _proto_zsh_aliases _proto_zsh_macros _proto_zsh
 typeset -gi _proto_zsh_fd=-1 _proto_zsh_pid=0 _proto_zsh_cursor=-1 _proto_zsh_index=1
 typeset -gi _proto_zsh_suppressed=0
 typeset -gi _proto_zsh_generation=0
+typeset -gi _proto_zsh_history_event=-1
 typeset -g _proto_zsh_prefix='' _proto_zsh_cwd='' _proto_zsh_ghost='' _proto_zsh_foreign=''
 
 _proto_zsh_cli() {
@@ -125,6 +126,12 @@ _proto_zsh_ready() {
     _proto_zsh_cancel
 }
 
+_proto_zsh_receive() {
+    emulate -L zsh
+    # Async replies must not replace LASTWIDGET.
+    zle _proto_zsh_ready -f nolast -Nw -- "$1"
+}
+
 _proto_zsh_schedule() {
     emulate -L zsh
     setopt localoptions no_monitor
@@ -155,13 +162,19 @@ _proto_zsh_schedule() {
         fi
     )
     read -r _proto_zsh_pid <&$_proto_zsh_fd
-    zle -F -w "$_proto_zsh_fd" _proto_zsh_ready
+    zle -F "$_proto_zsh_fd" _proto_zsh_receive
 }
 
 _proto_zsh_observe() {
     emulate -L zsh
     [[ ${_PROTO_ZSH_LOADED:-0} == 1 ]] || return
-    if [[ $BUFFER != "$_proto_zsh_prefix" || $CURSOR != "$_proto_zsh_cursor" || $PWD != "$_proto_zsh_cwd" ]]; then
+    local -i history_navigation=$(( HISTNO != _proto_zsh_history_event ))
+    _proto_zsh_history_event=$HISTNO
+    case $LASTWIDGET in
+        *history*|*line-or-search|*line-or-beginning-search) history_navigation=1 ;;
+    esac
+    if [[ $BUFFER != "$_proto_zsh_prefix" || $CURSOR != "$_proto_zsh_cursor" || $PWD != "$_proto_zsh_cwd" ]] ||
+       (( history_navigation )); then
         _proto_zsh_cancel
         local previous=${_proto_zsh_commands[_proto_zsh_index]:-}
         local -a candidates=() risks=()
@@ -173,8 +186,9 @@ _proto_zsh_observe() {
             fi
         done
         if [[ $BUFFER != "$_proto_zsh_prefix" ]]; then
-            _proto_zsh_suppressed=0
+            _proto_zsh_suppressed=$history_navigation
         fi
+        (( history_navigation )) && _proto_zsh_suppressed=1
         _proto_zsh_commands=("${candidates[@]}")
         _proto_zsh_risks=("${risks[@]}")
         _proto_zsh_index=${_proto_zsh_commands[(Ie)$previous]}
@@ -197,6 +211,7 @@ _proto_zsh_init() {
     _proto_zsh_risks=()
     _proto_zsh_cursor=-1
     _proto_zsh_prefix=''
+    _proto_zsh_history_event=$HISTNO
     _proto_zsh_suppressed=0
     _proto_zsh_ghost=''
     _proto_zsh_foreign=$POSTDISPLAY
