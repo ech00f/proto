@@ -52,6 +52,7 @@ class Fixture {
         root = directory;
         config.home = root / "home";
         config.state_directory = root / "state";
+        config.config_file = root / "config/proto/config.json";
         std::filesystem::create_directories(config.home);
     }
     ~Fixture() {
@@ -129,6 +130,29 @@ void config_tests() {
     fixture.config.api_key.clear();
     fixture.config.shell = "/bin";
     throws([&] { fixture.config.validate(); }, "Directory accepted as a shell executable");
+}
+
+void settings_tests() {
+    Fixture fixture;
+    fixture.config.model = "saved-model";
+    fixture.config.api_key = "never-on-disk";
+    fixture.config.suggestion_count = 5;
+    fixture.config.context_scope = proto::ContextScope::None;
+    fixture.config.save();
+    proto::Config loaded;
+    loaded.config_file = fixture.config.config_file;
+    loaded.load_file();
+    check(loaded.model == "saved-model" && loaded.suggestion_count == 5, "Settings round trip");
+    check(loaded.api_key.empty() && !fixture.config.json().contains("api_key"), "Key in saved settings");
+    struct stat info{};
+    check(::stat(loaded.config_file.c_str(), &info) == 0 && (info.st_mode & 0777) == 0600, "Config permissions");
+    const auto victim = fixture.root / "victim";
+    std::ofstream(victim) << "untouched";
+    std::filesystem::remove(loaded.config_file);
+    std::filesystem::create_symlink(victim, loaded.config_file);
+    throws([&] { fixture.config.save(); }, "Symlink config overwritten");
+    throws([&] { loaded.load_file(); }, "Symlink config read");
+    check(std::filesystem::file_size(victim) == 9, "Config symlink victim changed");
 }
 
 void context_tests() {
@@ -344,7 +368,7 @@ int main() {
     (void)std::setlocale(LC_ALL, "");
     const std::pair<const char *, std::function<void()>> tests[]{
         {"text / privacy", text_tests},    {"command safety", safety_tests},
-        {"configuration", config_tests},   {"context", context_tests},
+        {"configuration", config_tests}, {"saved settings", settings_tests},  {"context", context_tests},
         {"completion", completion_tests},  {"history", history_tests},
         {"terminal editor", editor_tests}, {"history safety", history_safety_tests}};
     int failures = 0;

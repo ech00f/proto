@@ -167,6 +167,7 @@ class IntegrationTests(unittest.TestCase):
         self.environment.update({
             "HOME": str(self.home),
             "XDG_STATE_HOME": str(self.root / "state"),
+            "XDG_CONFIG_HOME": str(self.root / "config"),
             "PROTO_API_BASE": f"http://127.0.0.1:{self.server.server_port}/v1",
             "PROTO_API_KEY": "test-only-key",
             "PROTO_MODEL": "fixture-model",

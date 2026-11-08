@@ -76,7 +76,7 @@ int main(int argc, char **argv) {
             }
         }
         auto config = proto::Config::from_environment();
-        config.ai_enabled = !no_ai;
+        config.ai_enabled = config.ai_enabled && !no_ai;
         config.validate();
         proto::History history(config);
         const auto cwd = std::filesystem::current_path();

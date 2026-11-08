@@ -94,13 +94,6 @@ std::unique_ptr<CURLU, decltype(&curl_url_cleanup)> parse_url(const std::string 
 
 Config Config::from_environment() {
     Config config;
-    config.api_base = environment("PROTO_API_BASE", config.api_base);
-    while (!config.api_base.empty() && config.api_base.back() == '/') {
-        config.api_base.pop_back();
-    }
-    config.model = environment("PROTO_MODEL", config.model);
-    config.api_key = environment("PROTO_API_KEY");
-    config.shell = environment("PROTO_SHELL", environment("SHELL", "/bin/sh"));
     config.home = environment("HOME");
     if (config.home.empty()) {
         const passwd *user = ::getpwuid(::getuid());
@@ -112,18 +105,34 @@ Config Config::from_environment() {
     config.state_directory = !state.empty() && std::filesystem::path(state).is_absolute()
                                  ? std::filesystem::path(state)
                                  : config.home / ".local/state";
-    config.debounce = std::chrono::milliseconds(number("PROTO_DEBOUNCE_MS", 250, 0, 5000));
-    config.timeout = std::chrono::milliseconds(number("PROTO_TIMEOUT_MS", 5000, 100, 30000));
-    config.max_entries = static_cast<std::size_t>(number("PROTO_MAX_ENTRIES", 80, 1, 200));
-    config.suggestion_count = static_cast<std::size_t>(number("PROTO_SUGGESTIONS", 3, 1, 5));
-    config.persist_history = !boolean("PROTO_NO_HISTORY", false);
-    config.send_history = boolean("PROTO_SEND_HISTORY", false);
-    const auto scope = environment("PROTO_CONTEXT", "home");
+    const auto directory = environment("XDG_CONFIG_HOME");
+    config.config_file = (!directory.empty() && std::filesystem::path(directory).is_absolute()
+                              ? std::filesystem::path(directory) : config.home / ".config") /
+                         "proto/config.json";
+    config.load_file();
+    config.api_base = environment("PROTO_API_BASE", config.api_base);
+    while (!config.api_base.empty() && config.api_base.back() == '/') {
+        config.api_base.pop_back();
+    }
+    config.model = environment("PROTO_MODEL", config.model);
+    config.api_key = environment("PROTO_API_KEY");
+    config.shell = environment("PROTO_SHELL", environment("SHELL", "/bin/sh"));
+    config.ai_enabled = boolean("PROTO_AI", config.ai_enabled);
+    config.theme = environment("PROTO_THEME", config.theme);
+    config.debounce = std::chrono::milliseconds(number("PROTO_DEBOUNCE_MS", static_cast<int>(config.debounce.count()), 0, 5000));
+    config.timeout = std::chrono::milliseconds(number("PROTO_TIMEOUT_MS", static_cast<int>(config.timeout.count()), 100, 30000));
+    config.max_entries = static_cast<std::size_t>(number("PROTO_MAX_ENTRIES", static_cast<int>(config.max_entries), 1, 200));
+    config.suggestion_count = static_cast<std::size_t>(number("PROTO_SUGGESTIONS", static_cast<int>(config.suggestion_count), 1, 5));
+    config.persist_history = !boolean("PROTO_NO_HISTORY", !config.persist_history);
+    config.send_history = boolean("PROTO_SEND_HISTORY", config.send_history);
+    const auto scope = environment("PROTO_CONTEXT", std::string(context_name(config.context_scope)));
     if (scope == "none") {
         config.context_scope = ContextScope::None;
     } else if (scope == "cwd") {
         config.context_scope = ContextScope::CurrentDirectory;
-    } else if (scope != "home") {
+    } else if (scope == "home") {
+        config.context_scope = ContextScope::Home;
+    } else {
         throw std::runtime_error("PROTO_CONTEXT must be none, cwd, or home");
     }
     return config;
@@ -147,6 +156,25 @@ void Config::validate() const {
     if (!home.is_absolute()) {
         throw std::runtime_error("HOME must be an absolute directory path");
     }
+    if (max_entries < 1 || max_entries > 200 || suggestion_count < 1 || suggestion_count > 5 ||
+        debounce.count() < 0 || debounce.count() > 5000 || timeout.count() < 100 || timeout.count() > 30000) {
+        throw std::runtime_error("Completion settings are outside their allowed ranges");
+    }
+    if (theme != "aurora" && theme != "midnight") {
+        throw std::runtime_error("PROTO_THEME must be aurora or midnight");
+    }
+}
+
+std::string_view context_name(ContextScope scope) {
+    switch (scope) {
+    case ContextScope::None:
+        return "none";
+    case ContextScope::CurrentDirectory:
+        return "cwd";
+    case ContextScope::Home:
+        return "home";
+    }
+    return "none";
 }
 
 bool Config::local_endpoint() const {

@@ -3,7 +3,9 @@
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
+#include <nlohmann/json.hpp>
 #include <string>
+#include <string_view>
 
 namespace proto {
 
@@ -16,6 +18,7 @@ struct Config {
     std::string shell = "/bin/sh";
     std::filesystem::path home;
     std::filesystem::path state_directory;
+    std::filesystem::path config_file;
     std::chrono::milliseconds debounce{250};
     std::chrono::milliseconds timeout{5000};
     std::size_t max_entries = 80;
@@ -24,10 +27,16 @@ struct Config {
     bool ai_enabled = true;
     bool persist_history = true;
     bool send_history = false;
+    std::string theme = "aurora";
 
     static Config from_environment();
     void validate() const;
     bool local_endpoint() const;
+    void load_file();
+    void save() const;
+    nlohmann::json json() const;
 };
+
+std::string_view context_name(ContextScope scope);
 
 } // namespace proto
