@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="948" height="560" viewBox="0 0 948 560" role="img" aria-labelledby="title description">
+  <title id="title">proto — 09 / PLAN - review every step, then type RUN</title>
+  <desc id="description">Rendered from a real disposable proto terminal session. Model responses are supplied by a local test fixture.</desc>
+  <rect width="948" height="560" rx="16" fill="#0c101c"/>
+  <path d="M16 0h916a16 16 0 0 1 16 16v28H0V16A16 16 0 0 1 16 0" fill="#131929"/>
+  <circle cx="24" cy="22" r="5" fill="#ff778d"/>
+  <circle cx="42" cy="22" r="5" fill="#f9c873"/>
+  <circle cx="60" cy="22" r="5" fill="#62e4b8"/>
+  <text x="474.0" y="27" text-anchor="middle" fill="#70829f" font-family="monospace" font-size="12">proto / terminal</text>
+  <g font-family="Noto Sans Mono, DejaVu Sans Mono, monospace" font-size="15" xml:space="preserve">
+    <rect x="42" y="75" width="864" height="19" fill="#131929"/>
+    <text x="42" y="90" fill="#b097ff" textLength="864" lengthAdjust="spacingAndGlyphs">╭──────────────────────────────────────────────────────────────────────────────────────────────╮</text>
+    <rect x="42" y="94" width="864" height="19" fill="#131929"/>
+    <text x="42" y="109" fill="#b097ff" textLength="27" lengthAdjust="spacingAndGlyphs">│  </text>
+    <text x="69" y="109" fill="#e0e8f8" textLength="297" lengthAdjust="spacingAndGlyphs">◈  P R O T O   /   Prepare a demo</text>
+    <text x="366" y="109" fill="#b097ff" textLength="540" lengthAdjust="spacingAndGlyphs">                                                           │</text>
+    <rect x="42" y="113" width="864" height="19" fill="#131929"/>
+    <text x="42" y="128" fill="#b097ff" textLength="27" lengthAdjust="spacingAndGlyphs">│  </text>
+    <text x="69" y="128" fill="#70829f" textLength="522" lengthAdjust="spacingAndGlyphs">AI PLAN / one shell · shared state · stop on first failure</text>
+    <text x="591" y="128" fill="#b097ff" textLength="315" lengthAdjust="spacingAndGlyphs">                                  │</text>
+    <rect x="42" y="132" width="864" height="19" fill="#131929"/>
+    <text x="42" y="147" fill="#b097ff" textLength="864" lengthAdjust="spacingAndGlyphs">│──────────────────────────────────────────────────────────────────────────────────────────────│</text>
+    <rect x="42" y="151" width="864" height="19" fill="#131929"/>
+    <text x="42" y="166" fill="#b097ff" textLength="864" lengthAdjust="spacingAndGlyphs">│                                                                                              │</text>
+    <rect x="42" y="170" width="864" height="19" fill="#131929"/>
+    <text x="42" y="185" fill="#b097ff" textLength="27" lengthAdjust="spacingAndGlyphs">│  </text>
+    <text x="69" y="185" fill="#62e4b8" textLength="72" lengthAdjust="spacingAndGlyphs">[1] none</text>
+    <text x="141" y="185" fill="#b097ff" textLength="765" lengthAdjust="spacingAndGlyphs">                                                                                    │</text>
+    <rect x="42" y="189" width="864" height="19" fill="#131929"/>
+    <text x="42" y="204" fill="#b097ff" textLength="27" lengthAdjust="spacingAndGlyphs">│  </text>
+    <text x="69" y="204" fill="#e0e8f8" textLength="135" lengthAdjust="spacingAndGlyphs">  mkdir -p demo</text>
+    <text x="204" y="204" fill="#b097ff" textLength="702" lengthAdjust="spacingAndGlyphs">                                                                             │</text>
+    <rect x="42" y="208" width="864" height="19" fill="#131929"/>
+    <text x="42" y="223" fill="#b097ff" textLength="27" lengthAdjust="spacingAndGlyphs">│  </text>
+    <text x="69" y="223" fill="#70829f" textLength="261" lengthAdjust="spacingAndGlyphs">  Create a working directory.</text>
+    <text x="330" y="223" fill="#b097ff" textLength="576" lengthAdjust="spacingAndGlyphs">                                                               │</text>
+    <rect x="42" y="227" width="864" height="19" fill="#131929"/>
+    <text x="42" y="242" fill="#b097ff" textLength="864" lengthAdjust="spacingAndGlyphs">│                                                                                              │</text>
+    <rect x="42" y="246" width="864" height="19" fill="#131929"/>
+    <text x="42" y="261" fill="#b097ff" textLength="27" lengthAdjust="spacingAndGlyphs">│  </text>
+    <text x="69" y="261" fill="#62e4b8" textLength="72" lengthAdjust="spacingAndGlyphs">[2] none</text>
+    <text x="141" y="261" fill="#b097ff" textLength="765" lengthAdjust="spacingAndGlyphs">                                                                                    │</text>
+    <rect x="42" y="265" width="864" height="19" fill="#131929"/>
+    <text x="42" y="280" fill="#b097ff" textLength="27" lengthAdjust="spacingAndGlyphs">│  </text>
+    <text x="69" y="280" fill="#e0e8f8" textLength="81" lengthAdjust="spacingAndGlyphs">  cd demo</text>
+    <text x="150" y="280" fill="#b097ff" textLength="756" lengthAdjust="spacingAndGlyphs">                                                                                   │</text>
+    <rect x="42" y="284" width="864" height="19" fill="#131929"/>
+    <text x="42" y="299" fill="#b097ff" textLength="864" lengthAdjust="spacingAndGlyphs">│                                                                                              │</text>
+    <rect x="42" y="303" width="864" height="19" fill="#131929"/>
+    <text x="42" y="318" fill="#b097ff" textLength="27" lengthAdjust="spacingAndGlyphs">│  </text>
+    <text x="69" y="318" fill="#62e4b8" textLength="72" lengthAdjust="spacingAndGlyphs">[3] none</text>
+    <text x="141" y="318" fill="#b097ff" textLength="765" lengthAdjust="spacingAndGlyphs">                                                                                    │</text>
+    <rect x="42" y="322" width="864" height="19" fill="#131929"/>
+    <text x="42" y="337" fill="#b097ff" textLength="27" lengthAdjust="spacingAndGlyphs">│  </text>
+    <text x="69" y="337" fill="#e0e8f8" textLength="90" lengthAdjust="spacingAndGlyphs">  git init</text>
+    <text x="159" y="337" fill="#b097ff" textLength="747" lengthAdjust="spacingAndGlyphs">                                                                                  │</text>
+    <rect x="42" y="341" width="864" height="19" fill="#131929"/>
+    <text x="42" y="356" fill="#b097ff" textLength="864" lengthAdjust="spacingAndGlyphs">│                                                                                              │</text>
+    <rect x="42" y="360" width="864" height="19" fill="#131929"/>
+    <text x="42" y="375" fill="#b097ff" textLength="864" lengthAdjust="spacingAndGlyphs">│                                                                                              │</text>
+    <rect x="42" y="379" width="864" height="19" fill="#131929"/>
+    <text x="42" y="394" fill="#b097ff" textLength="864" lengthAdjust="spacingAndGlyphs">│                                                                                              │</text>
+    <rect x="42" y="398" width="864" height="19" fill="#131929"/>
+    <text x="42" y="413" fill="#b097ff" textLength="27" lengthAdjust="spacingAndGlyphs">│  </text>
+    <text x="69" y="413" fill="#f9c873" textLength="99" lengthAdjust="spacingAndGlyphs">CONFIRM  › </text>
+    <text x="168" y="413" fill="#b097ff" textLength="738" lengthAdjust="spacingAndGlyphs">                                                                                 │</text>
+    <rect x="42" y="417" width="864" height="19" fill="#131929"/>
+    <text x="42" y="432" fill="#b097ff" textLength="864" lengthAdjust="spacingAndGlyphs">│                                                                                              │</text>
+    <rect x="42" y="436" width="864" height="19" fill="#131929"/>
+    <text x="42" y="451" fill="#b097ff" textLength="864" lengthAdjust="spacingAndGlyphs">│──────────────────────────────────────────────────────────────────────────────────────────────│</text>
+    <rect x="42" y="455" width="864" height="19" fill="#131929"/>
+    <text x="42" y="470" fill="#b097ff" textLength="27" lengthAdjust="spacingAndGlyphs">│  </text>
+    <text x="69" y="470" fill="#62e4b8" textLength="468" lengthAdjust="spacingAndGlyphs">↑↓ scroll · type RUN + Enter to confirm · Esc cancel</text>
+    <text x="537" y="470" fill="#b097ff" textLength="369" lengthAdjust="spacingAndGlyphs">                                        │</text>
+    <rect x="42" y="474" width="864" height="19" fill="#131929"/>
+    <text x="42" y="489" fill="#b097ff" textLength="864" lengthAdjust="spacingAndGlyphs">╰──────────────────────────────────────────────────────────────────────────────────────────────╯</text>
+  </g>
+  <path d="M24 523h900" stroke="#232d45"/>
+  <text x="24" y="545" fill="#62e4b8" font-family="monospace" font-size="12">09 / PLAN - review every step, then type RUN</text>
+</svg>

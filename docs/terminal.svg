@@ -1,18 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="840" height="230" viewBox="0 0 840 230" role="img" aria-labelledby="title description">
-  <title id="title">Proto inline command autocomplete</title>
-  <desc id="description">An illustrated terminal: git st is typed, and atus --short appears in gray as a suggestion. Tab accepts it, Enter runs the input.</desc>
-  <rect width="840" height="230" rx="14" fill="#111820"/>
-  <path d="M14 0h812a14 14 0 0 1 14 14v28H0V14A14 14 0 0 1 14 0" fill="#202a35"/>
-  <circle cx="24" cy="21" r="6" fill="#ff615a"/>
-  <circle cx="44" cy="21" r="6" fill="#ffbd2e"/>
-  <circle cx="64" cy="21" r="6" fill="#28c840"/>
-  <text x="420" y="26" text-anchor="middle" fill="#cbd5e1" font-family="monospace" font-size="13">proto — AI command autocomplete</text>
-  <g font-family="monospace" font-size="20">
-    <text x="28" y="102" fill="#67e8f9">proto ~/project $</text>
-    <text x="256" y="102" fill="#f1f5f9">git st</text>
-    <text x="328" y="102" fill="#7d8998">atus --short</text>
-    <path d="M328 82v25" stroke="#e2e8f0" stroke-width="2"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="948" height="199" viewBox="0 0 948 199" role="img" aria-labelledby="title description">
+  <title id="title">proto — 02 / GHOST TEXT - nothing has executed</title>
+  <desc id="description">Rendered from a real disposable proto terminal session. Model responses are supplied by a local test fixture.</desc>
+  <rect width="948" height="199" rx="16" fill="#0c101c"/>
+  <path d="M16 0h916a16 16 0 0 1 16 16v28H0V16A16 16 0 0 1 16 0" fill="#131929"/>
+  <circle cx="24" cy="22" r="5" fill="#ff778d"/>
+  <circle cx="42" cy="22" r="5" fill="#f9c873"/>
+  <circle cx="60" cy="22" r="5" fill="#62e4b8"/>
+  <text x="474.0" y="27" text-anchor="middle" fill="#70829f" font-family="monospace" font-size="12">proto / terminal</text>
+  <g font-family="Noto Sans Mono, DejaVu Sans Mono, monospace" font-size="15" xml:space="preserve">
+    <text x="24" y="71" fill="#73daca" textLength="216" lengthAdjust="spacingAndGlyphs">proto ~/project [1/2] $ </text>
+    <text x="240" y="71" fill="#e0e8f8" textLength="54" lengthAdjust="spacingAndGlyphs">git st</text>
+    <text x="294" y="71" fill="#70829f" textLength="108" lengthAdjust="spacingAndGlyphs">atus --short</text>
   </g>
-  <text x="28" y="155" fill="#94a3b8" font-family="monospace" font-size="14">Tab: accept   ·   Ctrl+Right: next word   ·   Enter: run your input</text>
-  <text x="28" y="194" fill="#64748b" font-family="monospace" font-size="13">Directory names as context. No file contents. No automatic execution.</text>
+  <path d="M294 56v18" stroke="#62e4b8" stroke-width="2"/>
+  <path d="M24 162h900" stroke="#232d45"/>
+  <text x="24" y="184" fill="#62e4b8" font-family="monospace" font-size="12">02 / GHOST TEXT - nothing has executed</text>
 </svg>
