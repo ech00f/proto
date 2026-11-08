@@ -29,11 +29,14 @@ Usage: proto [--no-ai]
   --complete PREFIX   Print a complete command without executing it
   --suggest PREFIX    Print alternative commands, one per line
   --suggest-json TEXT Print alternatives with risk labels as JSON
+  --suggest-shell TEXT Print risk<TAB>command records for shell widgets
   --plan TASK         Preview an AI multi-command plan as JSON; never execute it
   --run-plan TASK     Generate, review and confirm a plan in the TUI
+  --approve-plan TASK Review a plan, then print its script only after confirmation
   --menu              Open the control center; selected history goes to stdout
   --check COMMAND     Print risk JSON; exit 3 for danger, 0 otherwise
   --confirm COMMAND   Confirm dangerous input in the TUI; exit 3 on cancellation
+  --record COMMAND    Add non-sensitive input to proto history; never execute it
   --context           Preview the exact directory/history context sent to the model
   --no-ai             Use only local path and proto-history completions
 
@@ -59,6 +62,9 @@ int main(int argc, char **argv) {
         bool json = false;
         bool menu = false;
         bool run_plan = false;
+        bool approve_plan = false;
+        bool shell_format = false;
+        bool record = false;
         bool check = false;
         bool confirm = false;
         std::optional<std::string> prefix;
@@ -80,18 +86,22 @@ int main(int argc, char **argv) {
             } else if (argument == "--context" && !menu && !preview && !prefix && !task) {
                 preview = true;
             } else if ((argument == "--complete" || argument == "--suggest" ||
-                        argument == "--suggest-json" || argument == "--check" ||
-                        argument == "--confirm") &&
+                        argument == "--suggest-json" || argument == "--suggest-shell" ||
+                        argument == "--check" || argument == "--confirm" || argument == "--record") &&
                        !menu && !preview && !prefix && !task && index + 1 < argc) {
                 prefix = argv[++index];
                 alternatives = argument != "--complete";
                 json = argument == "--suggest-json";
                 check = argument == "--check";
                 confirm = argument == "--confirm";
-            } else if ((argument == "--plan" || argument == "--run-plan") && !menu && !preview &&
+                shell_format = argument == "--suggest-shell";
+                record = argument == "--record";
+            } else if ((argument == "--plan" || argument == "--run-plan" ||
+                        argument == "--approve-plan") && !menu && !preview &&
                        !prefix && !task && index + 1 < argc) {
                 task = argv[++index];
                 run_plan = argument == "--run-plan";
+                approve_plan = argument == "--approve-plan";
             } else {
                 throw std::runtime_error("Unknown or conflicting argument; run proto --help");
             }
@@ -105,7 +115,7 @@ int main(int argc, char **argv) {
             (prefix->size() > proto::max_command_bytes || !proto::printable_utf8(*prefix))) {
             throw std::runtime_error("Prefix must be printable UTF-8, at most 4096 bytes");
         }
-        if (menu || confirm || run_plan) {
+        if (menu || confirm || run_plan || approve_plan) {
             const proto::SignalGuard signals;
             if (menu) {
                 if (const auto recalled = proto::show_menu(config, cwd, history.entries())) {
@@ -118,8 +128,12 @@ int main(int argc, char **argv) {
                 return proto::confirm_command(*prefix) ? 0 : 3;
             }
             if (const auto plan = proto::review_plan(config, *task, cwd, history.entries())) {
-                proto::Shell shell(config);
                 history.add("?? " + *task);
+                if (approve_plan) {
+                    std::cout << proto::plan_script(*plan);
+                    return 0;
+                }
+                proto::Shell shell(config);
                 const auto result = shell.execute(proto::plan_script(*plan));
                 const int signal = proto::take_signal();
                 return signal != 0 ? 128 + signal : result.status;
@@ -137,6 +151,10 @@ int main(int argc, char **argv) {
             return 0;
         }
         if (prefix) {
+            if (record) {
+                history.add(*prefix);
+                return 0;
+            }
             if (check) {
                 const auto risk = proto::assess_command(*prefix);
                 std::cout << risk.json().dump() << '\n';
@@ -172,6 +190,9 @@ int main(int argc, char **argv) {
                 std::cout << output.dump() << '\n';
             } else {
                 for (const auto &command : candidates) {
+                    if (shell_format) {
+                        std::cout << proto::risk_name(proto::assess_command(command).level) << '\t';
+                    }
                     std::cout << command << '\n';
                 }
             }

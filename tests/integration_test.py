@@ -236,6 +236,31 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(candidates[0]["risk"]["level"], "none")
         self.assertEqual(self.requests[0]["context"]["suggestion_count"], 3)
 
+    def test_shell_protocol_never_emits_control_characters_in_commands(self):
+        self.response = lambda _context: json.dumps({"completions": [
+            "rm old.txt", "rm 'bad\tname'", "rm old\x1b[2J"]})
+        result = self.run_cli("--suggest-shell", "rm ")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "danger\trm old.txt\n")
+
+    def test_record_filters_secrets_and_never_executes(self):
+        self.assertEqual(self.run_cli("--record", "touch not-executed.txt").returncode, 0)
+        self.assertEqual(self.run_cli("--record", "password=private-value").returncode, 0)
+        history = (self.root / "state/proto/history").read_text()
+        self.assertEqual(history, "touch not-executed.txt\n")
+        self.assertFalse((self.cwd / "not-executed.txt").exists())
+        self.assertEqual(self.requests, [])
+
+    def test_approved_script_is_printed_but_never_executed(self):
+        self.response = lambda _context: json.dumps({"title": "Return a script", "steps": [
+            {"command": "touch reviewed.txt"}]})
+        terminal = self.terminal("--approve-plan", "prepare a script", initial=b"CONFIRM")
+        self.assertFalse((self.cwd / "reviewed.txt").exists())
+        terminal.send("RUN\r")
+        self.assertEqual(terminal.wait(), 0)
+        self.assertIn(b"eval 'touch reviewed.txt'", terminal.output)
+        self.assertFalse((self.cwd / "reviewed.txt").exists())
+
     def test_plan_preview_never_executes(self):
         self.response = lambda _context: json.dumps({"title": "Create two files", "steps": [
             {"command": "printf one > one.txt"}, {"command": "printf two > two.txt"}]})
