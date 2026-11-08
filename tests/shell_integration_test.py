@@ -97,7 +97,7 @@ class ShellTests(unittest.TestCase):
         self.addCleanup(self.close_shell, terminal)
         terminal.read_until(b"shell $ ")
         terminal.send(setup + "source " + shlex.quote(str(ROOT / "shell" / f"proto.{kind}")) + "\r")
-        terminal.read_until(b"shell $ ")
+        terminal.read_until(b"shell $ ", after=b"\n")
         terminal.pump(0.1)
         return terminal
 
@@ -245,9 +245,9 @@ class ShellTests(unittest.TestCase):
     def test_bash_disable_restores_custom_tab(self):
         terminal = self.shell(setup="bind '\"\\C-i\": \"restored\"'; ")
         terminal.send("proto-disable\r")
-        terminal.read_until(b"shell $ ")
+        terminal.read_until(b"shell $ ", after=b"\n")
         terminal.send("printf '\t' > restored.txt\r")
-        terminal.read_until(b"shell $ ")
+        terminal.read_until(b"shell $ ", after=b"\n")
         self.assertEqual((self.cwd / "restored.txt").read_text(), "restored")
 
     def test_bash_exit_restores_terminal(self):
@@ -292,11 +292,11 @@ class ShellTests(unittest.TestCase):
         terminal.send("cd ~/Doc\x18\x01")
         terminal.read_until(b"Documents/")
         terminal.send("\r")
-        terminal.read_until(b"shell $ ")
+        terminal.read_until(b"shell $ ", after=b"\n")
         terminal.send("proto-disable\r")
-        terminal.read_until(b"shell $ ")
+        terminal.read_until(b"shell $ ", after=b"\n")
         terminal.send("printf fallback > fallback.txt\r")
-        terminal.read_until(b"shell $ ")
+        terminal.read_until(b"shell $ ", after=b"\n")
         self.assertEqual((self.home / "Documents/fallback.txt").read_text(), "fallback")
 
     def test_zsh_local_completion_and_native_state(self):

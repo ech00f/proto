@@ -53,11 +53,18 @@ class TerminalProcess:
             self.output += block
         return self.output
 
-    def read_until(self, text, timeout=4):
+    def read_until(self, text, timeout=4, after=None):
+        def found(output):
+            if after is not None:
+                _, separator, output = output.partition(after)
+                if not separator:
+                    return False
+            return text in output
+
         deadline = time.monotonic() + timeout
-        while text not in self.output and text not in self.plain_output and time.monotonic() < deadline:
+        while not found(self.output) and not found(self.plain_output) and time.monotonic() < deadline:
             self.pump(0.03)
-        if text not in self.output and text not in self.plain_output:
+        if not found(self.output) and not found(self.plain_output):
             raise AssertionError(f"Terminal did not print {text!r}: {self.output[-1200:]!r}")
         return self.output
 
