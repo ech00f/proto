@@ -103,6 +103,9 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/daemon_test.py
                     $<TARGET_FILE:proto>)
         set_tests_properties(daemon PROPERTIES TIMEOUT 60)
+        add_test(NAME installer
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/install_test.py)
+        set_tests_properties(installer PROPERTIES TIMEOUT 30)
         if(TARGET proto_bash)
             set(PROTO_TEST_BASH_MODULE "$<TARGET_FILE:proto_bash>")
         else()
