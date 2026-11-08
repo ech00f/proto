@@ -77,6 +77,14 @@ class TerminalProcess:
         self.read_until(b"\x1b[?2004h")
         return self.read_until(text)
 
+    def foreground(self):
+        self.read_until(b"\x1b[?2004l")
+        deadline = time.monotonic() + 4
+        while os.tcgetpgrp(self.master) == self.pid and time.monotonic() < deadline:
+            self.pump(0.01)
+        if os.tcgetpgrp(self.master) == self.pid:
+            raise AssertionError("Command did not acquire the foreground terminal")
+
     def wait(self, timeout=4):
         deadline = time.monotonic() + timeout
         while self.status is None and time.monotonic() < deadline:
@@ -390,12 +398,12 @@ class IntegrationTests(unittest.TestCase):
     def test_foreground_ctrl_c_and_job_resume(self):
         terminal = self.terminal("--no-ai")
         terminal.send("sleep 10\r")
-        terminal.read_until(b"\x1b[?2004l")
+        terminal.foreground()
         terminal.send("\x1a")
         terminal.read_until(b"use fg to resume")
         terminal.prompt()
         terminal.send("fg\r")
-        terminal.read_until(b"\x1b[?2004l")
+        terminal.foreground()
         terminal.send("\x03")
         terminal.prompt()
         terminal.send("\x04")

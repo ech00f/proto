@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="230" viewBox="0 0 840 230" role="img" aria-labelledby="title description">
+  <title id="title">Proto inline command autocomplete</title>
+  <desc id="description">An illustrated terminal: git st is typed, and atus --short appears in gray as a suggestion. Tab accepts it, Enter runs the input.</desc>
+  <rect width="840" height="230" rx="14" fill="#111820"/>
+  <path d="M14 0h812a14 14 0 0 1 14 14v28H0V14A14 14 0 0 1 14 0" fill="#202a35"/>
+  <circle cx="24" cy="21" r="6" fill="#ff615a"/>
+  <circle cx="44" cy="21" r="6" fill="#ffbd2e"/>
+  <circle cx="64" cy="21" r="6" fill="#28c840"/>
+  <text x="420" y="26" text-anchor="middle" fill="#cbd5e1" font-family="monospace" font-size="13">proto — AI command autocomplete</text>
+  <g font-family="monospace" font-size="20">
+    <text x="28" y="102" fill="#67e8f9">proto ~/project $</text>
+    <text x="256" y="102" fill="#f1f5f9">git st</text>
+    <text x="328" y="102" fill="#7d8998">atus --short</text>
+    <path d="M328 82v25" stroke="#e2e8f0" stroke-width="2"/>
+  </g>
+  <text x="28" y="155" fill="#94a3b8" font-family="monospace" font-size="14">Tab: accept   ·   Ctrl+Right: next word   ·   Enter: run your input</text>
+  <text x="28" y="194" fill="#64748b" font-family="monospace" font-size="13">Directory names as context. No file contents. No automatic execution.</text>
+</svg>

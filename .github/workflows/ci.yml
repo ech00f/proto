@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux / GCC / Release
+            os: ubuntu-latest
+            compiler: g++
+            build_type: Release
+            sanitizers: "OFF"
+          - name: Linux / Clang / ASan + UBSan
+            os: ubuntu-latest
+            compiler: clang++
+            build_type: Debug
+            sanitizers: "ON"
+          - name: macOS / Clang / Release
+            os: macos-latest
+            compiler: clang++
+            build_type: Release
+            sanitizers: "OFF"
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build pkg-config g++ clang python3 libcurl4-openssl-dev nlohmann-json3-dev
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake ninja pkg-config curl nlohmann-json
+          echo "PKG_CONFIG_PATH=$(brew --prefix curl)/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix)" >> "$GITHUB_ENV"
+      - name: Configure
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}
+          -DPROTO_ENABLE_SANITIZERS=${{ matrix.sanitizers }}
+      - name: Build
+        run: cmake --build build --parallel 2
+      - name: Test without external model services
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ctest --test-dir build --output-on-failure
