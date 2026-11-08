@@ -22,6 +22,7 @@ add_library(proto_core
     src/completion_service.cpp
     src/config.cpp
     src/context.cpp
+    src/daemon.cpp
     src/history.cpp
     src/local_completion.cpp
     src/plan.cpp
@@ -98,6 +99,10 @@ if(BUILD_TESTING)
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration_test.py
                     $<TARGET_FILE:proto>)
         set_tests_properties(integration PROPERTIES TIMEOUT 90)
+        add_test(NAME daemon
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/daemon_test.py
+                    $<TARGET_FILE:proto>)
+        set_tests_properties(daemon PROPERTIES TIMEOUT 60)
         if(TARGET proto_bash)
             set(PROTO_TEST_BASH_MODULE "$<TARGET_FILE:proto_bash>")
         else()

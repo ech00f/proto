@@ -254,6 +254,7 @@ def main():
         environment = {key: value for key, value in os.environ.items() if not key.startswith("PROTO_")}
         environment.update({
             "HOME": str(home), "XDG_STATE_HOME": str(root / "state"), "XDG_CONFIG_HOME": str(root / "config"),
+            "XDG_RUNTIME_DIR": str(root / "runtime"),
             "PROTO_MODEL": "qwen2.5-coder:7b", "PROTO_AI": "1", "PROTO_SHELL": "/bin/sh",
             "PROTO_API_BASE": f"http://127.0.0.1:{server.server_port}/v1", "PROTO_TIMEOUT_MS": "1000",
             "PROTO_DEBOUNCE_MS": "80", "TERM": "xterm-256color",

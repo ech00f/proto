@@ -111,6 +111,34 @@ class ShellTests(unittest.TestCase):
                 pass
         terminal.close(signal.SIGHUP)
 
+    def start_daemon(self):
+        runtime = self.home / "runtime"
+        runtime.mkdir(mode=0o700)
+        self.environment["PROTO_DAEMON_SOCKET"] = str(runtime / "proto.sock")
+        daemon = subprocess.Popen([BINARY, "--daemon"], cwd=self.home, env=self.environment,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        def stop():
+            if daemon.poll() is None:
+                daemon.terminate()
+            try:
+                output, error = daemon.communicate(timeout=4)
+            except subprocess.TimeoutExpired:
+                daemon.kill()
+                daemon.communicate()
+                self.fail("Shell fixture daemon did not stop")
+            self.assertEqual(daemon.returncode, 0, error.decode())
+
+        self.addCleanup(stop)
+        deadline = time.monotonic() + 4
+        while daemon.poll() is None and time.monotonic() < deadline:
+            status = subprocess.run([BINARY, "--daemon-status"], cwd=self.home, env=self.environment,
+                                    capture_output=True, text=True, timeout=2)
+            if status.returncode == 0 and json.loads(status.stdout)["pid"] == daemon.pid:
+                return
+            time.sleep(0.01)
+        self.fail("Shell fixture daemon did not become ready")
+
     def test_bash_inline_and_variant_selection(self):
         self.environment["PROTO_AI"] = "1"
         self.response = lambda _context: json.dumps({"completions": [
@@ -328,6 +356,18 @@ class ShellTests(unittest.TestCase):
         self.assert_plan_function_uses_menu_settings("bash", native=False)
 
     def test_zsh_plan_function_uses_menu_settings(self):
+        self.assert_plan_function_uses_menu_settings("zsh")
+
+    def test_bash_daemon_plan_uses_menu_settings(self):
+        self.start_daemon()
+        self.assert_plan_function_uses_menu_settings("bash")
+
+    def test_bash_fallback_daemon_plan_uses_menu_settings(self):
+        self.start_daemon()
+        self.assert_plan_function_uses_menu_settings("bash", native=False)
+
+    def test_zsh_daemon_plan_uses_menu_settings(self):
+        self.start_daemon()
         self.assert_plan_function_uses_menu_settings("zsh")
 
     def test_bash_fallback_and_restore(self):

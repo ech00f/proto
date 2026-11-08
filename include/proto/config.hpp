@@ -19,6 +19,7 @@ struct Config {
     std::filesystem::path home;
     std::filesystem::path state_directory;
     std::filesystem::path config_file;
+    std::filesystem::path daemon_socket;
     std::chrono::milliseconds debounce{250};
     std::chrono::milliseconds timeout{5000};
     std::size_t max_entries = 80;
@@ -27,6 +28,7 @@ struct Config {
     bool ai_enabled = true;
     bool persist_history = true;
     bool send_history = false;
+    bool use_daemon = true;
     std::string theme = "aurora";
 
     static Config from_environment();

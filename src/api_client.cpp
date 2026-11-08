@@ -1,5 +1,6 @@
 #include "proto/api_client.hpp"
 
+#include "proto/daemon.hpp"
 #include "proto/text.hpp"
 
 #include <algorithm>
@@ -162,6 +163,11 @@ std::string ApiClient::generate(const nlohmann::json &context, std::string_view 
     }
     if (cancellation.cancelled()) {
         throw RequestCancelled();
+    }
+    if (config_.use_daemon) {
+        if (auto content = generate_via_daemon(config_, context, instructions, max_tokens, cancellation)) {
+            return *content;
+        }
     }
     const auto payload = nlohmann::json{
         {"model", config_.model},

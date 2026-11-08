@@ -1,6 +1,7 @@
 #include "proto/config.hpp"
 
 #include "proto/api_client.hpp"
+#include "proto/daemon.hpp"
 #include "proto/text.hpp"
 
 #include <algorithm>
@@ -117,6 +118,8 @@ Config Config::from_environment() {
     }
     config.model = environment("PROTO_MODEL", config.model);
     config.api_key = environment("PROTO_API_KEY");
+    config.use_daemon = boolean("PROTO_DAEMON", true);
+    config.daemon_socket = daemon_socket_path();
     config.shell = environment("PROTO_SHELL", environment("SHELL", "/bin/sh"));
     config.ai_enabled = boolean("PROTO_AI", config.ai_enabled);
     config.theme = environment("PROTO_THEME", config.theme);
@@ -154,8 +157,8 @@ void Config::validate() const {
     if (model.empty() || model.size() > 256 || !printable_utf8(model)) {
         throw std::runtime_error("PROTO_MODEL must be a nonempty, single-line model name");
     }
-    if (!printable_utf8(api_key)) {
-        throw std::runtime_error("PROTO_API_KEY contains invalid characters");
+    if (api_key.size() > 8192 || !printable_utf8(api_key)) {
+        throw std::runtime_error("PROTO_API_KEY must contain at most 8192 printable bytes");
     }
     std::error_code error;
     if (!printable_utf8(shell) || !std::filesystem::path(shell).is_absolute() ||

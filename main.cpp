@@ -1,6 +1,7 @@
 #include "proto/api_client.hpp"
 #include "proto/config.hpp"
 #include "proto/context.hpp"
+#include "proto/daemon.hpp"
 #include "proto/editor.hpp"
 #include "proto/history.hpp"
 #include "proto/local_completion.hpp"
@@ -24,6 +25,7 @@ constexpr auto help = R"(proto — AI command autocomplete for your terminal
 
 Usage: proto [--no-ai]
        proto [--no-ai] --context | --complete PREFIX
+       proto --daemon | --daemon-status
        proto --help | --version
 
   --complete PREFIX   Print a complete command without executing it
@@ -40,6 +42,8 @@ Usage: proto [--no-ai]
   --confirm COMMAND   Confirm dangerous input in the TUI; exit 3 on cancellation
   --record COMMAND    Add non-sensitive input to proto history; never execute it
   --context           Preview the exact directory/history context sent to the model
+  --daemon            Serve AI requests over a private user Unix socket; never execute commands
+  --daemon-status     Check daemon readiness as JSON; exit 3 when it is not running
   --no-ai             Use only local path and proto-history completions
 
 In interactive mode: Tab / Right accepts ghost text; Ctrl+Right accepts one word.
@@ -65,6 +69,14 @@ void print_shell_settings(const proto::Config &config) {
 int main(int argc, char **argv) {
     (void)std::setlocale(LC_ALL, "");
     try {
+        if (argc == 2 && std::string_view(argv[1]) == "--daemon") {
+            return proto::serve_daemon();
+        }
+        if (argc == 2 && std::string_view(argv[1]) == "--daemon-status") {
+            const auto status = proto::daemon_status();
+            std::cout << status.dump() << '\n';
+            return status.at("running").get<bool>() ? 0 : 3;
+        }
         bool no_ai = false;
         bool preview = false;
         bool alternatives = false;
