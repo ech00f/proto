@@ -20,6 +20,7 @@
 #include <cstring>
 #include <fcntl.h>
 #include <memory>
+#include <poll.h>
 #include <readline/readline.h>
 #include <spawn.h>
 #include <stdexcept>
@@ -40,8 +41,8 @@ class BlockChildSignal {
   public:
     BlockChildSignal() {
         sigset_t mask;
-        ::sigemptyset(&mask);
-        ::sigaddset(&mask, SIGCHLD);
+        sigemptyset(&mask);
+        sigaddset(&mask, SIGCHLD);
         if (::sigprocmask(SIG_BLOCK, &mask, &previous_) != 0) {
             throw std::runtime_error("Could not protect completion process ownership");
         }
@@ -152,11 +153,11 @@ class CompletionProcess {
         if (initialized) {
             sigset_t mask;
             sigset_t defaults;
-            ::sigemptyset(&mask);
-            ::sigemptyset(&defaults);
+            sigemptyset(&mask);
+            sigemptyset(&defaults);
             for (const int signal :
                  {SIGINT, SIGTERM, SIGHUP, SIGPIPE, SIGQUIT, SIGTSTP, SIGTTIN, SIGTTOU}) {
-                ::sigaddset(&defaults, signal);
+                sigaddset(&defaults, signal);
             }
             add(::posix_spawnattr_setsigmask(&attributes, &mask));
             add(::posix_spawnattr_setsigdefault(&attributes, &defaults));
@@ -431,6 +432,14 @@ int new_prompt() {
 int idle() {
     return guarded([] {
         const int result = state->old_idle != nullptr ? state->old_idle() : 0;
+        // Some bundled Readline versions report ready input without gathering it.
+        if (rl_instream != nullptr && rl_getc_function != nullptr) {
+            struct pollfd input{::fileno(rl_instream), POLLIN, 0};
+            if (::poll(&input, 1, 0) > 0 &&
+                (input.revents & (POLLIN | POLLHUP | POLLERR)) != 0) {
+                rl_stuff_char(rl_getc_function(rl_instream));
+            }
+        }
         state->observe();
         if (state->pending && Clock::now() >= state->due) {
             state->pending = false;

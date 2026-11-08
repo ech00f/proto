@@ -50,8 +50,8 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew install cmake ninja pkg-config curl nlohmann-json bash readline
-          echo "PKG_CONFIG_PATH=$(brew --prefix curl)/lib/pkgconfig" >> "$GITHUB_ENV"
-          echo "CMAKE_PREFIX_PATH=$(brew --prefix);$(brew --prefix readline);$(brew --prefix bash)" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=$(brew --prefix curl)/lib/pkgconfig:$(brew --prefix readline)/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix):$(brew --prefix readline):$(brew --prefix bash)" >> "$GITHUB_ENV"
           echo "PROTO_TEST_BASH=$(brew --prefix bash)/bin/bash" >> "$GITHUB_ENV"
       - name: Configure
         run: >-

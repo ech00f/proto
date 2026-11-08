@@ -1,5 +1,6 @@
-#include "builtins.h"
 #include "config.h"
+
+#include "builtins.h"
 #include "variables.h"
 
 #include <stdio.h>

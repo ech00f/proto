@@ -48,6 +48,24 @@ if(PROTO_BUILD_BASH_MODULE AND NOT PROTO_ENABLE_SANITIZERS)
     find_path(BASH_INCLUDE_DIR builtins.h PATH_SUFFIXES bash)
     find_path(READLINE_INCLUDE_DIR readline/readline.h)
     if(BASH_INCLUDE_DIR AND READLINE_INCLUDE_DIR)
+        include(CMakePushCheckState)
+        include(CheckCXXSourceCompiles)
+        cmake_push_check_state(RESET)
+        set(CMAKE_REQUIRED_INCLUDES ${READLINE_INCLUDE_DIR})
+        check_cxx_source_compiles("
+            #include <cstdio>
+            #include <readline/readline.h>
+            #if !defined(RL_READLINE_VERSION) || RL_READLINE_VERSION < 0x0801
+            #error GNU Readline 8.1+ is required
+            #endif
+            using Lookup = decltype(rl_function_of_keyseq_len);
+            using Timeout = decltype(rl_set_keyboard_input_timeout);
+            using KeySequence = decltype(rl_key_sequence_length);
+            int main() { return 0; }
+        " PROTO_HAS_GNU_READLINE)
+        cmake_pop_check_state()
+    endif()
+    if(BASH_INCLUDE_DIR AND READLINE_INCLUDE_DIR AND PROTO_HAS_GNU_READLINE)
         enable_language(C)
         add_library(proto_bash MODULE src/bash_bridge.c src/bash_integration.cpp)
         target_include_directories(proto_bash SYSTEM PRIVATE ${BASH_INCLUDE_DIR}
@@ -60,7 +78,7 @@ if(PROTO_BUILD_BASH_MODULE AND NOT PROTO_ENABLE_SANITIZERS)
         endif()
         install(TARGETS proto_bash LIBRARY DESTINATION lib/proto)
     else()
-        message(STATUS "Bash headers unavailable: shell/proto.bash will use on-demand completions")
+        message(STATUS "Bash/GNU Readline headers unavailable: shell/proto.bash will use on-demand completions")
     endif()
 endif()
 
