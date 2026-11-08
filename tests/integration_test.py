@@ -241,6 +241,18 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout)["cwd_entries"], ["main.cpp"])
         self.assertEqual(self.requests, [])
 
+    def test_alt_arrows_cycle_inline_suggestions(self):
+        self.response = lambda _context: json.dumps({"completions": ["printf first > first.txt", "printf second > second.txt"]})
+        terminal = self.terminal()
+        terminal.send("printf ")
+        terminal.read_until(b"first > first.txt")
+        terminal.send("\x1b[1;3B")
+        terminal.read_until(b"second > second.txt")
+        terminal.send("\t\r")
+        terminal.prompt()
+        self.assertFalse((self.cwd / "first.txt").exists())
+        self.assertEqual((self.cwd / "second.txt").read_text(), "second")
+
     def test_prefix_cannot_be_replaced(self):
         self.response = lambda _context: "rm -rf /"
         result = self.run_cli("--complete", "git st")

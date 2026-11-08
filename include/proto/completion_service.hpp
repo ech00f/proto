@@ -18,7 +18,7 @@ namespace proto {
 struct CompletionResult {
     std::uint64_t generation = 0;
     std::string prefix;
-    std::optional<std::string> command;
+    std::vector<std::string> commands;
     std::string warning;
     bool ai_response = false;
 };

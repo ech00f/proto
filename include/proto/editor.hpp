@@ -31,6 +31,10 @@ enum class Key {
     Eof,
     Redraw,
     Escape,
+    NextSuggestion,
+    PreviousSuggestion,
+    Menu,
+    Plan,
     PasteBegin,
     PasteEnd
 };

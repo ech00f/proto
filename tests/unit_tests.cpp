@@ -5,6 +5,7 @@
 #include "proto/history.hpp"
 #include "proto/local_completion.hpp"
 #include "proto/safety.hpp"
+#include "proto/suggestions.hpp"
 #include "proto/text.hpp"
 
 #include <clocale>
@@ -240,6 +241,12 @@ void history_tests() {
 }
 
 void editor_tests() {
+    proto::Suggestions choices;
+    choices.assign({"git status", "git stash", "git store"});
+    choices.cycle(-1);
+    check(choices.selected() == "git store", "Alternative wraparound");
+    choices.filter("git sta");
+    check(choices.size() == 2 && choices.selected() == "git status", "Alternative prefix filter");
     proto::LineBuffer line;
     check(line.insert("a界b"), "UTF-8 insertion");
     line.left();

@@ -1,7 +1,9 @@
 #include "proto/editor.hpp"
 
 #include "proto/context.hpp"
+#include "proto/safety.hpp"
 #include "proto/signals.hpp"
+#include "proto/suggestions.hpp"
 #include "proto/text.hpp"
 
 #include <algorithm>
@@ -72,8 +74,10 @@ int terminal_columns() {
     return ::ioctl(STDOUT_FILENO, TIOCGWINSZ, &size) == 0 && size.ws_col != 0 ? size.ws_col : 80;
 }
 
-std::string render(const Frame &frame) {
-    return "\r\x1b[2K\x1b[36m" + frame.prompt + "\x1b[0m" + frame.text + "\x1b[90m" + frame.ghost +
+std::string render(const Frame &frame, RiskLevel risk) {
+    const auto ghost_color = risk == RiskLevel::Danger ? "\x1b[91m" :
+                             risk == RiskLevel::Caution ? "\x1b[33m" : "\x1b[90m";
+    return "\r\x1b[2K\x1b[36m" + frame.prompt + "\x1b[0m" + frame.text + ghost_color + frame.ghost +
            "\x1b[0m\r\x1b[" + std::to_string(frame.cursor_column + 1) + "G";
 }
 
@@ -113,6 +117,12 @@ void InputDecoder::escape(std::vector<KeyEvent> &events) {
         events.push_back({Key::PasteEnd, {}});
     } else if (!pasting_) {
         const std::pair<std::string_view, Key> sequences[]{{"\x1b[A", Key::Up},
+                                                           {"\x1b[1;3A", Key::PreviousSuggestion},
+                                                           {"\x1b[1;3B", Key::NextSuggestion},
+                                                           {"\x1b,", Key::PreviousSuggestion},
+                                                           {"\x1b.", Key::NextSuggestion},
+                                                           {"\x1bOQ", Key::Menu},
+                                                           {"\x1b[12~", Key::Menu},
                                                            {"\x1b[B", Key::Down},
                                                            {"\x1b[C", Key::Right},
                                                            {"\x1b[D", Key::Left},
@@ -188,10 +198,10 @@ void InputDecoder::byte(unsigned char value, std::vector<KeyEvent> &events) {
         return;
     }
     const std::pair<unsigned char, Key> controls[]{
-        {1, Key::Home},       {2, Key::Left},      {3, Key::Cancel},     {4, Key::Eof},
+        {0, Key::Menu}, {1, Key::Home},       {2, Key::Left},      {3, Key::Cancel},     {4, Key::Eof},
         {5, Key::End},        {6, Key::Right},     {8, Key::Backspace},  {9, Key::Accept},
         {10, Key::Enter},     {11, Key::KillEnd},  {12, Key::Redraw},    {13, Key::Enter},
-        {21, Key::KillStart}, {23, Key::KillWord}, {127, Key::Backspace}};
+        {7, Key::Plan}, {21, Key::KillStart}, {23, Key::KillWord}, {127, Key::Backspace}};
     for (const auto &[control, key] : controls) {
         if (value == control) {
             events.push_back({key, {}});
@@ -355,7 +365,7 @@ ReadResult Editor::read_line(const std::filesystem::path &cwd,
     const Terminal terminal;
     LineBuffer line;
     InputDecoder decoder;
-    std::optional<std::string> completion;
+    Suggestions suggestions;
     std::uint64_t request = 0;
     bool suppressed = false;
     bool pasting = false;
@@ -367,19 +377,28 @@ ReadResult Editor::read_line(const std::filesystem::path &cwd,
     const auto prompt = [&] {
         const auto path = display_path(cwd, config_.home);
         const auto short_path = display_width(path) > 28 ? clip_columns(path, 27) + "…" : path;
-        return std::string("proto") + (offline_ ? " [local] " : " ") + short_path + " $ ";
+        std::string status;
+        if (suggestions.size() > 1 && !suppressed && line.at_end()) {
+            status += " [" + std::to_string(suggestions.index() + 1) + "/" +
+                      std::to_string(suggestions.size()) + "]";
+        }
+        const auto risk = assess_command(suggestions.selected().empty() || suppressed || !line.at_end()
+                                              ? std::string_view(line.text()) : suggestions.selected());
+        if (risk.level != RiskLevel::None) {
+            status += " [" + std::string(risk_name(risk.level)) + "]";
+        }
+        return std::string("proto") + (offline_ ? " [local] " : " ") + short_path + status + " $ ";
     };
     const auto update = [&] {
-        if (pasting || suppressed || !line.at_end() || line.text().empty()) {
+        if (pasting || suppressed || !line.at_end() || line.text().empty() || line.text().starts_with("??")) {
             completions_.cancel();
             return;
         }
-        if (completion && completion->starts_with(line.text()) &&
-            completion->size() > line.text().size()) {
+        suggestions.filter(line.text());
+        if (!suggestions.selected().empty()) {
             completions_.cancel();
             return;
         }
-        completion.reset();
         request = completions_.submit(line.text(), cwd, history);
     };
     const auto finish = [&](ReadState state, int signal = 0) {
@@ -405,8 +424,8 @@ ReadResult Editor::read_line(const std::filesystem::path &cwd,
                     offline_ = false;
                     warning_.clear();
                 }
-                if (result->command) {
-                    completion = std::move(result->command);
+                if (!result->commands.empty()) {
+                    suggestions.assign(std::move(result->commands));
                 }
                 if (!result->warning.empty()) {
                     warning_ = std::move(result->warning);
@@ -414,8 +433,9 @@ ReadResult Editor::read_line(const std::filesystem::path &cwd,
                 }
             }
         }
-        const auto frame = render(make_frame(
-            prompt(), line, completion && !suppressed ? *completion : "", terminal_columns()));
+        const auto selected = suppressed ? std::string_view{} : suggestions.selected();
+        const auto frame = render(make_frame(prompt(), line, selected, terminal_columns()),
+                                  assess_command(selected.empty() ? std::string_view(line.text()) : selected).level);
         if (frame != last_frame) {
             write_terminal(frame);
             last_frame = frame;
@@ -479,15 +499,15 @@ ReadResult Editor::read_line(const std::filesystem::path &cwd,
                 break;
             case Key::Right:
             case Key::Accept:
-                if (completion && line.accept(*completion)) {
-                    completion.reset();
+                if (line.accept(suggestions.selected())) {
+                    suggestions.clear();
                     suppressed = true;
                 } else if (event.key == Key::Right) {
                     line.right();
                 }
                 break;
             case Key::WordRight:
-                if (!completion || !line.accept(*completion, true)) {
+                if (!line.accept(suggestions.selected(), true)) {
                     line.word_right();
                 }
                 break;
@@ -529,7 +549,7 @@ ReadResult Editor::read_line(const std::filesystem::path &cwd,
                 }
                 break;
             case Key::Escape:
-                completion.reset();
+                suggestions.clear();
                 suppressed = true;
                 completions_.cancel();
                 break;
@@ -539,7 +559,7 @@ ReadResult Editor::read_line(const std::filesystem::path &cwd,
                 break;
             case Key::PasteBegin:
                 pasting = true;
-                completion.reset();
+                suggestions.clear();
                 completions_.cancel();
                 break;
             case Key::PasteEnd:
@@ -547,14 +567,21 @@ ReadResult Editor::read_line(const std::filesystem::path &cwd,
                 suppressed = false;
                 update();
                 break;
+            case Key::NextSuggestion:
+            case Key::PreviousSuggestion:
+                if (line.at_end() && !suppressed) {
+                    suggestions.cycle(event.key == Key::NextSuggestion ? 1 : -1);
+                }
+                break;
+            case Key::Menu:
+            case Key::Plan:
+                break;
             }
             if (line.text() != old_text || line.cursor() != old_cursor) {
                 if (event.key != Key::Up && event.key != Key::Down) {
                     history_index = history.size();
                 }
-                if (!completion || !completion->starts_with(line.text())) {
-                    completion.reset();
-                }
+                suggestions.filter(line.text());
                 update();
             }
         }

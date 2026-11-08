@@ -83,23 +83,23 @@ void CompletionService::run() {
 
         const Cancellation cancellation{&generation_, request.generation};
         try {
-            const auto local =
-                complete_local(request.prefix, request.cwd, config_.home, request.history);
+            const auto local = complete_locals(request.prefix, request.cwd, config_.home,
+                                                request.history, config_.suggestion_count);
             if (cancellation.cancelled()) {
                 continue;
             }
-            if (local) {
+            if (!local.empty()) {
                 publish({request.generation, request.prefix, local, {}});
             }
             if (config_.ai_enabled && can_send_prefix(request.prefix)) {
                 const auto context =
                     build_context(config_, request.prefix, request.cwd, request.history);
-                const auto generated = ApiClient(config_).complete(context, cancellation);
+                const auto generated = ApiClient(config_).suggest(context, cancellation);
                 publish({request.generation, request.prefix, generated, {}, true});
             }
         } catch (const RequestCancelled &) {
         } catch (const std::exception &error) {
-            publish({request.generation, request.prefix, std::nullopt, error.what()});
+            publish({request.generation, request.prefix, {}, error.what()});
         }
     }
 }
