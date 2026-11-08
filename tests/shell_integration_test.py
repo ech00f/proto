@@ -64,6 +64,7 @@ class ShellTests(unittest.TestCase):
             "HOME": str(self.home), "ZDOTDIR": str(self.home), "INPUTRC": "/dev/null",
             "HISTFILE": str(self.home / "shell-history"), "PS1": "shell $ ", "PROMPT_COMMAND": "",
             "XDG_CONFIG_HOME": str(self.home / "config"), "XDG_STATE_HOME": str(self.home / "state"),
+            "XDG_RUNTIME_DIR": str(self.home / "runtime"),
             "PROTO_BIN": BINARY, "PROTO_AI": "0", "PROTO_MODEL": "shell-fixture",
             "PROTO_DEBOUNCE_MS": "70", "PROTO_TIMEOUT_MS": "1000",
             "PROTO_API_BASE": f"http://127.0.0.1:{self.server.server_port}/v1",
@@ -294,6 +295,40 @@ class ShellTests(unittest.TestCase):
                 terminal.read_until(b"shell $ ")
                 self.assertEqual((self.cwd / "environment.txt").read_text(), "shell-fixture")
                 self.close_shell(terminal)
+
+    def assert_plan_function_uses_menu_settings(self, kind, native=True):
+        self.environment["PROTO_AI"] = "1"
+        self.response = lambda context: json.dumps({"title": "Configured plan", "steps": [
+            {"command": "printf configured > plan-settings.txt"}]}) if "task" in context else context["prefix"]
+        terminal = self.shell(kind, native=native)
+        terminal.send("\x1bOQ")
+        terminal.read_until(b"YOUR TERMINAL")
+        terminal.send("2\x1b[B\x1b[B\r\x15plan-model\r")
+        terminal.read_until(b"Changed locally")
+        terminal.send("s")
+        terminal.read_until(b"Saved & applied")
+        terminal.send("\x1b")
+        terminal.read_until(b"\x1b[?1049l")
+        terminal.read_until(b"\x1b[?2004h")
+        terminal.send("proto-plan 'use the current settings'\r")
+        terminal.read_until(b"CONFIRM")
+        self.assertEqual(self.models[-1], "plan-model")
+        self.assertFalse((self.cwd / "plan-settings.txt").exists())
+        terminal.send("RUN\r")
+        terminal.read_until(b"shell $ ", after=b"\n")
+        self.assertEqual((self.cwd / "plan-settings.txt").read_text(), "configured")
+        terminal.send("printf '%s' \"$PROTO_MODEL\" > environment.txt\r")
+        terminal.read_until(b"shell $ ", after=b"\n")
+        self.assertEqual((self.cwd / "environment.txt").read_text(), "shell-fixture")
+
+    def test_bash_plan_function_uses_menu_settings(self):
+        self.assert_plan_function_uses_menu_settings("bash")
+
+    def test_bash_fallback_plan_function_uses_menu_settings(self):
+        self.assert_plan_function_uses_menu_settings("bash", native=False)
+
+    def test_zsh_plan_function_uses_menu_settings(self):
+        self.assert_plan_function_uses_menu_settings("zsh")
 
     def test_bash_fallback_and_restore(self):
         if BASH is None:

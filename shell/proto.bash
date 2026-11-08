@@ -18,6 +18,11 @@ PROTO_BIN=$(cd -- "$(dirname -- "$PROTO_BIN")" && printf '%s/%s' "$PWD" "$(basen
 _proto_bash_options=()
 
 _proto_bash_cli() {
+    if [[ ${_proto_bash_native:-0} == 1 && ${_PROTO_BASH_LOADED:-0} == 1 ]]; then
+        local settings
+        settings=$(proto_hook settings) || return
+        _proto_bash_settings "$settings"
+    fi
     command env "PROTO_SHELL=$BASH" "${_proto_bash_options[@]}" "$PROTO_BIN" "$@"
 }
 
@@ -122,7 +127,10 @@ _proto_bash_previous() {
 
 _proto_bash_menu() {
     local output record LC_ALL=C
-    output=$(_proto_bash_cli --menu-shell) || return
+    output=$(_proto_bash_cli --menu-shell)
+    local result=$?
+    _proto_bash_resume
+    (( result == 0 )) || return "$result"
     _proto_bash_settings "$output"
     while IFS= read -r record; do
         if [[ $record == $'recall\t'* ]]; then
@@ -130,6 +138,16 @@ _proto_bash_menu() {
             READLINE_POINT=${#READLINE_LINE}
         fi
     done <<< "$output"
+}
+
+_proto_bash_resume() {
+    local setting
+    while IFS= read -r setting; do
+        if [[ $setting == 'set enable-bracketed-paste on' ]]; then
+            printf '\e[?2004h' >&2
+            return
+        fi
+    done < <(builtin bind -v)
 }
 
 _proto_bash_plan() {
@@ -153,12 +171,14 @@ _proto_bash_prepare() {
     else
         _proto_bash_cli --record "$READLINE_LINE" >/dev/null 2>&1
     fi
+    _proto_bash_resume
     local LC_ALL=C
     READLINE_POINT=${#READLINE_LINE}
 }
 
 proto-enable() {
     [[ ${_PROTO_BASH_LOADED:-0} == 1 ]] && return 0
+    _proto_bash_options=()
     local module map key index action enter binding
     if [[ ${PROTO_BASH_MODULE+x} ]]; then
         module=$PROTO_BASH_MODULE
@@ -243,6 +263,7 @@ proto-disable() {
         done
     fi
     _PROTO_BASH_LOADED=0
+    _proto_bash_options=()
 }
 
 proto-enable

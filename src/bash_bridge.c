@@ -9,6 +9,7 @@
 extern int proto_bash_enable(const char *binary);
 extern void proto_bash_disable(void);
 extern int proto_bash_active(void);
+extern int proto_bash_print_settings(void);
 
 char **proto_bash_environment(void) {
     maybe_make_export_env();
@@ -30,10 +31,13 @@ static int proto_hook_builtin(WORD_LIST *arguments) {
         proto_bash_disable();
         return 0;
     }
+    if (strcmp(action, "settings") == 0 && arguments->next == NULL) {
+        return proto_bash_print_settings();
+    }
     if (strcmp(action, "on") == 0 && arguments->next != NULL && arguments->next->next == NULL) {
         return proto_bash_enable(arguments->next->word->word);
     }
-    fputs("usage: proto_hook on /absolute/path/to/proto | off\n", stderr);
+    fputs("usage: proto_hook on /absolute/path/to/proto | off | settings\n", stderr);
     return 2;
 }
 
@@ -48,5 +52,5 @@ struct builtin proto_hook_struct = {"proto_hook",
                                     proto_hook_builtin,
                                     BUILTIN_ENABLED,
                                     documentation,
-                                    "proto_hook on /absolute/path/to/proto | off",
+                                    "proto_hook on /absolute/path/to/proto | off | settings",
                                     NULL};

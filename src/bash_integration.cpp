@@ -629,6 +629,17 @@ extern "C" int proto_bash_active() {
     return state != nullptr;
 }
 
+extern "C" int proto_bash_print_settings() {
+    if (!state) {
+        return 1;
+    }
+    const auto settings = state->config.shell_settings();
+    for (const auto &[name, value] : settings.items()) {
+        std::printf("setting\t%s\t%s\n", name.c_str(), value.get_ref<const std::string &>().c_str());
+    }
+    return 0;
+}
+
 extern "C" void proto_bash_disable() {
     if (!state) {
         return;
