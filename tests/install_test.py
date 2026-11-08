@@ -132,8 +132,12 @@ class InstallTests(unittest.TestCase):
         binary.symlink_to(shutil.which("true"))
         unit = self.root / "proto.service"
         unit.write_bytes(installer.render_unit(binary))
+        runtime = self.root / "runtime"
+        runtime.mkdir(mode=0o700)
+        environment = {key: value for key, value in os.environ.items() if not key.startswith(("XDG_", "DBUS_"))}
+        environment.update({"HOME": str(self.root), "XDG_RUNTIME_DIR": str(runtime)})
         result = subprocess.run(["systemd-analyze", "--user", "verify", str(unit)],
-                                capture_output=True, text=True, timeout=10)
+                                env=environment, capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_installed_files_are_updated_only_if_unchanged(self):
