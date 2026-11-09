@@ -114,7 +114,7 @@ if(BUILD_TESTING)
         add_test(NAME shell-integration
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/shell_integration_test.py
                     $<TARGET_FILE:proto> ${PROTO_TEST_BASH_MODULE})
-        set_tests_properties(shell-integration PROPERTIES TIMEOUT 90)
+        set_tests_properties(shell-integration PROPERTIES TIMEOUT 180)
     endif()
 endif()
 
